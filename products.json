@@ -1,0 +1,207 @@
+[
+  {
+    "id": "ZV001",
+    "name": "Aurelia Silk Dress",
+    "cat": "Dresses",
+    "gender": "Women",
+    "price": 18900,
+    "color": "Noir",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "img": "https://images.unsplash.com/photo-1704775990248-4c1c1a276b4f?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1613294091495-4fd30f388398?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A fluid silk midi dress defined by a sculpted waist and an effortless evening silhouette."
+  },
+  {
+    "id": "ZV002",
+    "name": "Nocturne Tailored Coat",
+    "cat": "Outerwear",
+    "gender": "Women",
+    "price": 28900,
+    "color": "Black",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "img": "https://images.unsplash.com/photo-1705798543468-5b951da25e1e?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1705798543441-37d6e3eb7ff3?auto=format&fit=crop&w=1200&q=90",
+    "desc": "An elongated wool coat with an architectural shoulder and precise tailoring."
+  },
+  {
+    "id": "ZV003",
+    "name": "Élan Sculpted Blazer",
+    "cat": "Tailoring",
+    "gender": "Women",
+    "price": 16500,
+    "color": "Ivory",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "img": "https://images.unsplash.com/photo-1571513722275-4b41940f54b8?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1609941367698-2648ef759ada?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A clean single-breasted blazer with a softly sculpted profile."
+  },
+  {
+    "id": "ZV004",
+    "name": "Luna Satin Camisole",
+    "cat": "Tops",
+    "gender": "Women",
+    "price": 8900,
+    "color": "Champagne",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "img": "https://images.unsplash.com/photo-1588186941286-724357304676?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1615997371734-a17a84d61df4?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A minimal satin camisole made for quiet evening layering."
+  },
+  {
+    "id": "ZV005",
+    "name": "Serein Wide-Leg Trousers",
+    "cat": "Trousers",
+    "gender": "Women",
+    "price": 11900,
+    "color": "Black",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "img": "https://images.unsplash.com/photo-1767631338127-8cd80ee2f9df?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1704642406929-ea6d2099f063?auto=format&fit=crop&w=1200&q=90",
+    "desc": "High-rise trousers with a relaxed, elegant wide-leg silhouette."
+  },
+  {
+    "id": "ZV006",
+    "name": "Celeste Evening Gown",
+    "cat": "Dresses",
+    "gender": "Women",
+    "price": 32900,
+    "color": "Crimson",
+    "sizes": [
+      "XS",
+      "S",
+      "M",
+      "L"
+    ],
+    "img": "https://images.unsplash.com/photo-1612336307429-8a898d10e223?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1527189919029-aeb3d997547d?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A floor-length evening silhouette with a restrained, dramatic finish."
+  },
+  {
+    "id": "ZV007",
+    "name": "Obsidian Wool Blazer",
+    "cat": "Tailoring",
+    "gender": "Men",
+    "price": 19900,
+    "color": "Black",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL"
+    ],
+    "img": "https://images.unsplash.com/photo-1777969382855-378507d33a50?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1617113930975-f9c7243ae527?auto=format&fit=crop&w=1200&q=90",
+    "desc": "Precision-cut wool tailoring with a relaxed contemporary fit."
+  },
+  {
+    "id": "ZV008",
+    "name": "Monarch Overshirt",
+    "cat": "Shirts",
+    "gender": "Men",
+    "price": 12900,
+    "color": "Stone",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "img": "https://images.unsplash.com/photo-1627555736175-54efd099f332?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1719418872372-3804c8e405a1?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A structured overshirt crafted for refined everyday dressing."
+  },
+  {
+    "id": "ZV009",
+    "name": "Sable Pleated Trousers",
+    "cat": "Trousers",
+    "gender": "Men",
+    "price": 11500,
+    "color": "Charcoal",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "img": "https://images.unsplash.com/photo-1630173250799-2813d34ed14b?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1678366033925-b917160e101a?auto=format&fit=crop&w=1200&q=90",
+    "desc": "Pleated trousers with a generous straight leg and refined drape."
+  },
+  {
+    "id": "ZV010",
+    "name": "Vesper Evening Jacket",
+    "cat": "Outerwear",
+    "gender": "Men",
+    "price": 22900,
+    "color": "Burgundy",
+    "sizes": [
+      "S",
+      "M",
+      "L",
+      "XL"
+    ],
+    "img": "https://images.unsplash.com/photo-1610312726541-0913012a2d00?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1610312726541-0913012a2d00?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A velvet evening jacket finished with a clean modern lapel."
+  },
+  {
+    "id": "ZV011",
+    "name": "Atelier Leather Tote",
+    "cat": "Bags",
+    "gender": "Unisex",
+    "price": 14900,
+    "color": "Noir",
+    "sizes": [
+      "One Size"
+    ],
+    "img": "https://images.unsplash.com/photo-1702326626601-74d2e86922b4?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1654707501753-e2cd18c2c416?auto=format&fit=crop&w=1200&q=90",
+    "desc": "A structured leather tote with understated House detailing."
+  },
+  {
+    "id": "ZV012",
+    "name": "ZAEVI Signature Loafers",
+    "cat": "Shoes",
+    "gender": "Unisex",
+    "price": 13900,
+    "color": "Black",
+    "sizes": [
+      "39",
+      "40",
+      "41",
+      "42",
+      "43",
+      "44"
+    ],
+    "img": "https://images.unsplash.com/photo-1661332445185-6e2ca6754fc4?auto=format&fit=crop&w=1200&q=90",
+    "hover": "https://images.unsplash.com/photo-1643827250236-92f296c21bbc?auto=format&fit=crop&w=1200&q=90",
+    "desc": "Polished leather loafers with a sculptural low profile."
+  }
+]

@@ -1,0 +1,80 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test / coverage output
+coverage/
+.nyc_output/
+*_output.txt
+*test*.txt
+*results*.txt
+compare_output.txt
+final_summary.txt
+
+# Backup and scratch scripts
+*.bak*
+*.fixed
+*.append
+*.new
+*.pre-cleanup
+
+# Local-only configuration
+*.local
+.DS_Store
+Thumbs.db
+
+# Editor / tooling
+.idea/
+.vscode/
+
+/src/generated/prisma
+
+# Database dumps and archives can hold customer data. Prisma migrations stay tracked.
+*.sql
+!prisma/migrations/**/migration.sql
+*.dump
+*.zip
+
+# Backups and data exports
+backups/
+*.csv
+*.tsv
+*.xlsx
+*.sqlite
+*.sqlite3
+*.db
+*.gz
+*.tar
+*.tgz
+*.7z
+*.rar
+
+# Uploaded media
+uploads/
+zaevi-cms-uploads/
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# Static build for Vercel
+dist/
+.vercel/
+
+# Internal launch records with personal email addresses. Kept on disk, not in Git.
+docs/pre-launch/
+scripts/verify-production-admin.mjs

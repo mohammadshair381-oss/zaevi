@@ -1,0 +1,470 @@
+/**
+ * ==========================================================================
+ * ZAEVI — Haute Couture 3D & Live Animation System
+ * Custom luxury cursor, 3D Atelier Studio, cinematic transitions,
+ * magnetic micro-interactions, parallax reveals, and particle physics.
+ * ==========================================================================
+ */
+
+/* --------------------------------------------------------------------------
+   1. Luxury Cursor System
+   -------------------------------------------------------------------------- */
+@media (pointer: fine) {
+  body.has-custom-cursor {
+    cursor: none;
+  }
+  body.has-custom-cursor a,
+  body.has-custom-cursor button,
+  body.has-custom-cursor .product,
+  body.has-custom-cursor [role="button"] {
+    cursor: none;
+  }
+}
+
+#zaevi-cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: #f3ece4;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 999999;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.2s ease;
+  opacity: 0;
+}
+
+#zaevi-cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 34px;
+  height: 34px;
+  border: 1.2px solid rgba(207, 10, 30, 0.55);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 999998;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s ease,
+              background-color 0.3s ease,
+              opacity 0.25s ease;
+  opacity: 0;
+}
+
+#zaevi-cursor-ring.is-hovering {
+  width: 58px;
+  height: 58px;
+  border-color: var(--zaevi-gold, #cf0a1e);
+  background: rgba(207, 10, 30, 0.08);
+}
+
+#zaevi-cursor-ring.is-clicking {
+  width: 24px;
+  height: 24px;
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* --------------------------------------------------------------------------
+   2. Cinematic Page Veil Transition
+   -------------------------------------------------------------------------- */
+#zaevi-page-veil {
+  position: fixed;
+  inset: 0;
+  background: #0b0708;
+  z-index: 999990;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s ease;
+}
+
+#zaevi-page-veil.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: all;
+}
+
+#zaevi-page-veil .veil-monogram {
+  width: 44px;
+  height: 44px;
+  opacity: 0.95;
+  transform: scale(0.9);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#zaevi-page-veil.active .veil-monogram {
+  transform: scale(1);
+}
+
+#zaevi-page-veil .veil-line {
+  width: 60px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--zaevi-gold, #cf0a1e), transparent);
+  margin-top: 18px;
+  animation: veilLinePulse 1.2s infinite ease-in-out;
+}
+
+@keyframes veilLinePulse {
+  0%, 100% { transform: scaleX(0.6); opacity: 0.4; }
+  50% { transform: scaleX(1.4); opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   3. 3D Hero WebGL Canvas
+   -------------------------------------------------------------------------- */
+#zaeviStage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  display: block;
+}
+
+.hero-3d-container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hero-3d-controls {
+  position: absolute;
+  bottom: 28px;
+  right: var(--gutter, 48px);
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.hero-3d-btn {
+  background: rgba(11, 7, 8, 0.62);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(243, 236, 228, 0.24);
+  color: #fff;
+  font-family: var(--zaevi-font-sans, inherit);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 20px;
+  transition: all 0.25s ease;
+}
+
+.hero-3d-btn:hover,
+.hero-3d-btn.active {
+  background: var(--zaevi-gold, #cf0a1e);
+  border-color: var(--zaevi-gold, #cf0a1e);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   4. 3D Atelier Product Studio
+   -------------------------------------------------------------------------- */
+#zaevi3dStudio {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% 42%, #4a0a14 0%, #17060a 46%, #070405 100%);
+  z-index: 999900;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+#zaevi3dStudio.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.studio-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px var(--gutter, 48px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}
+
+.studio-title {
+  font-family: var(--zaevi-font-serif, serif);
+  font-size: 20px;
+  font-weight: 300;
+  color: #fff;
+  letter-spacing: 0.08em;
+}
+
+.studio-subtitle {
+  font-size: 10.5px;
+  color: var(--zaevi-gold-dark, #f4606d);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.studio-close {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+}
+
+.studio-close:hover {
+  background: #fff;
+  color: #0b0708;
+  border-color: #fff;
+  transform: rotate(90deg);
+}
+
+.studio-viewport {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#zaeviStudioCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* 3D Hotspot Pins */
+.studio-hotspot {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  z-index: 15;
+  transition: opacity 0.25s ease;
+}
+
+.hotspot-beacon {
+  width: 12px;
+  height: 12px;
+  background: var(--zaevi-gold, #cf0a1e);
+  border-radius: 50%;
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  box-shadow: 0 0 10px rgba(207, 10, 30, 0.8);
+}
+
+.hotspot-pulse {
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid var(--zaevi-gold, #cf0a1e);
+  border-radius: 50%;
+  animation: hotspotRipple 2s infinite ease-out;
+}
+
+@keyframes hotspotRipple {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+.hotspot-card {
+  position: absolute;
+  left: 36px;
+  top: -12px;
+  width: 220px;
+  background: rgba(16, 9, 11, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--zaevi-gold, #cf0a1e);
+  padding: 12px 14px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.studio-hotspot:hover .hotspot-card {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.hotspot-title {
+  font-family: var(--zaevi-font-serif, serif);
+  font-size: 13.5px;
+  color: #fff;
+  margin: 0 0 4px;
+}
+
+.hotspot-desc {
+  font-size: 11px;
+  color: #d8cec5;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Studio Control Footer */
+.studio-footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px var(--gutter, 48px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  background: linear-gradient(to top, rgba(7, 4, 5, 0.9) 0%, transparent 100%);
+}
+
+.studio-hint {
+  font-size: 11.5px;
+  color: #c9bdb3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-hint span {
+  color: var(--zaevi-gold-dark, #f4606d);
+  font-size: 14px;
+}
+
+.studio-lighting-modes {
+  display: flex;
+  gap: 8px;
+}
+
+.lighting-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ccc;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: all 0.25s ease;
+}
+
+.lighting-btn.active,
+.lighting-btn:hover {
+  background: var(--zaevi-gold, #cf0a1e);
+  border-color: var(--zaevi-gold, #cf0a1e);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   5. Magnetic Buttons & Micro-Interactions
+   -------------------------------------------------------------------------- */
+.magnetic-target {
+  display: inline-block;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --------------------------------------------------------------------------
+   6. Wishlist Heart Particle Burst
+   -------------------------------------------------------------------------- */
+.wish-burst-particle {
+  position: fixed;
+  pointer-events: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--zaevi-gold, #cf0a1e);
+  z-index: 999980;
+  animation: wishBurst 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes wishBurst {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   7. Fly-to-Bag Spark Particle
+   -------------------------------------------------------------------------- */
+.fly-to-bag-particle {
+  position: fixed;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, var(--zaevi-gold, #cf0a1e) 70%, transparent 100%);
+  box-shadow: 0 0 14px var(--zaevi-gold, #cf0a1e);
+  pointer-events: none;
+  z-index: 999982;
+  animation: flyToBag 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes flyToBag {
+  0% { transform: translate(0, 0) scale(1.4); opacity: 1; }
+  75% { opacity: 0.9; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0.3); opacity: 0; }
+}
+
+/* --------------------------------------------------------------------------
+   8. Split Typography & Editorial Shimmer
+   -------------------------------------------------------------------------- */
+.luxury-shimmer {
+  background: linear-gradient(110deg, #f8f2eb 0%, #f8f2eb 38%, #ff5a68 50%, #f8f2eb 62%, #f8f2eb 100%);
+  background-size: 200% auto;
+  color: #fff;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: luxuryShimmer 9s linear infinite;
+}
+
+@keyframes luxuryShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* --------------------------------------------------------------------------
+   9. Reduced Motion Override
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  #zaevi-cursor-dot,
+  #zaevi-cursor-ring,
+  .wish-burst-particle,
+  .fly-to-bag-particle {
+    display: none !important;
+  }
+
+  body.has-custom-cursor {
+    cursor: auto !important;
+  }
+
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,62 @@
+# The Express API on Render. See docs/deployment.md.
+# Values marked "sync: false" are entered in the Render dashboard, never in this file.
+services:
+  - type: web
+    name: zaevi-api
+    runtime: node
+    # A paid plan, because only paid services can keep files on a persistent disk.
+    # Render shows the price before anything is created.
+    plan: 0.5c-512mb
+    # Prisma's CLI is a dev dependency, and NODE_ENV=production would otherwise skip it.
+    buildCommand: npm ci --include=dev && npx prisma generate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    # Only this folder survives restarts and deploys. A disk also limits the service to one
+    # instance, which in-memory sessions need anyway, and adds a few seconds' downtime per deploy.
+    disk:
+      name: uploads
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Must name a database called exactly "zaevi".
+      - key: DATABASE_URL
+        sync: false
+      # Enter "true" only once launch on this database is approved. Anything else refuses to start.
+      - key: ZAEVI_PRODUCTION_DB_APPROVED
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      # Same value as on Vercel.
+      - key: PROXY_SECRET
+        sync: false
+      # Must stay inside the disk's mountPath above.
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      # Resend. Port 2587 also keeps working if the service ever moves to the free plan,
+      # which blocks 25, 465 and 587.
+      - key: SMTP_HOST
+        value: smtp.resend.com
+      - key: SMTP_PORT
+        value: "2587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        value: resend
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: CONTACT_NOTIFY_EMAIL
+        sync: false
+      - key: CONTACT_EMAIL
+        sync: false
+      - key: BUSINESS_GSTIN
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false

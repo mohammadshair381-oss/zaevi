@@ -1,0 +1,2 @@
+# Prisma checksums cover a migration's exact bytes, so Git must never convert its line endings.
+prisma/migrations/** -text
