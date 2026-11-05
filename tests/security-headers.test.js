@@ -84,5 +84,5 @@ test('security headers do not alter existing status codes or bodies', async () =
   const blocked = await request(app).get('/.env');
   assert.equal(blocked.status, 404);
   assert.equal(blocked.text, 'Not Found');
-  assert.doesNotMatch(blocked.text ?? '', /DATABASE_URL/);
+  assert.doesNotMatch(blocked.text ?? '', /MONGODB_URI/);
 });

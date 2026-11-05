@@ -9,7 +9,7 @@ import { createApp } from '../src/app.js';
 // cover auth gating, ownership isolation, validation, the default-address
 // rule and CSRF protection.
 
-function createFakePrisma() {
+function createFakeDb() {
   const customers = new Map();
   const addresses = [];
   let customerSeq = 0;
@@ -19,7 +19,7 @@ function createFakePrisma() {
     async create({ data }) {
       if (customers.has(data.email)) {
         const error = new Error('Unique constraint failed on the fields: (`email`)');
-        error.code = 'P2002';
+        error.code = 'DUPLICATE_KEY';
         error.meta = { target: 'Customer_email_key' };
         throw error;
       }
@@ -127,16 +127,16 @@ function createFakePrisma() {
 }
 
 function buildApp() {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const app = createApp({
-    prisma,
+    db,
     logger: { log() {}, error() {} },
     sessionSecret: 'test-secret-32-characters-long-enough',
     authRateLimit: false,
     loginRateLimit: false,
     orderRateLimit: false,
   });
-  return { app, prisma };
+  return { app, db };
 }
 
 function validAddress(overrides = {}) {
@@ -194,10 +194,10 @@ test('GET /api/customer/addresses without a session is rejected', async () => {
 });
 
 test('POST /api/customer/addresses without a session creates nothing', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const res = await request(app).post('/api/customer/addresses').send(validAddress());
   assert.equal(res.status, 401);
-  assert.equal(prisma.__addresses.length, 0);
+  assert.equal(db.__addresses.length, 0);
 });
 
 test('middleware rejects unauthenticated PATCH, DELETE and default toggles', async () => {
@@ -211,7 +211,7 @@ test('middleware rejects unauthenticated PATCH, DELETE and default toggles', asy
 });
 
 test('a signed-in customer can create, list, update and delete an address', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const session = await login(app, 'owner@example.com');
 
   const created = await request(app)
@@ -246,11 +246,11 @@ test('a signed-in customer can create, list, update and delete an address', asyn
     .set('Cookie', session.cookieHeader)
     .set('x-csrf-token', session.csrf);
   assert.equal(removed.status, 200);
-  assert.equal(prisma.__addresses.length, 0);
+  assert.equal(db.__addresses.length, 0);
 });
 
 test('the client-supplied customerId is ignored; the session owns the address', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const session = await login(app, 'spoof@example.com');
   const res = await request(app)
     .post('/api/customer/addresses')
@@ -259,11 +259,11 @@ test('the client-supplied customerId is ignored; the session owns the address', 
     .send(validAddress({ customerId: 9999 }));
   assert.equal(res.status, 201);
   assert.equal(res.body.data.customerId, session.customerId);
-  assert.equal(prisma.__addresses[0].customerId, session.customerId);
+  assert.equal(db.__addresses[0].customerId, session.customerId);
 });
 
 test('setting a default unsets the previous default for the same customer only', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const session = await login(app, 'defaults@example.com');
   const auth = (req) => req.set('Cookie', session.cookieHeader).set('x-csrf-token', session.csrf);
 
@@ -272,19 +272,19 @@ test('setting a default unsets the previous default for the same customer only',
   assert.equal(first.status, 201);
   assert.equal(second.status, 201);
 
-  const rows = prisma.__addresses.filter((a) => a.customerId === session.customerId);
+  const rows = db.__addresses.filter((a) => a.customerId === session.customerId);
   assert.equal(rows.filter((a) => a.isDefault).length, 1, 'exactly one default per customer');
   assert.equal(rows.find((a) => a.isDefault).id, second.body.data.id);
 
   const toggled = await auth(request(app).post(`/api/customer/addresses/${first.body.data.id}/default`)).send({});
   assert.equal(toggled.status, 200);
-  const after = prisma.__addresses.filter((a) => a.customerId === session.customerId);
+  const after = db.__addresses.filter((a) => a.customerId === session.customerId);
   assert.equal(after.filter((a) => a.isDefault).length, 1);
   assert.equal(after.find((a) => a.isDefault).id, first.body.data.id);
 });
 
 test('another customer cannot read, update, delete or default a foreign address', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const owner = await login(app, 'owner2@example.com');
   const intruder = await login(app, 'intruder@example.com');
 
@@ -319,13 +319,13 @@ test('another customer cannot read, update, delete or default a foreign address'
     .set('x-csrf-token', intruder.csrf);
   assert.equal(def.status, 404);
 
-  assert.equal(prisma.__addresses.length, 1, 'the foreign row is untouched');
-  assert.equal(prisma.__addresses[0].city, 'Mumbai');
-  assert.equal(prisma.__addresses[0].isDefault, false);
+  assert.equal(db.__addresses.length, 1, 'the foreign row is untouched');
+  assert.equal(db.__addresses[0].city, 'Mumbai');
+  assert.equal(db.__addresses[0].isDefault, false);
 });
 
 test('required fields and Indian phone/PIN formats are validated', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const session = await login(app, 'validate@example.com');
   const post = (body) =>
     request(app)
@@ -350,7 +350,7 @@ test('required fields and Indian phone/PIN formats are validated', async () => {
     assert.equal(res.status, 400, `expected 400 for ${JSON.stringify(override)}`);
     assert.match(res.body.error.message, pattern);
   }
-  assert.equal(prisma.__addresses.length, 0, 'invalid submissions never persist');
+  assert.equal(db.__addresses.length, 0, 'invalid submissions never persist');
 });
 
 test('a malformed address id is rejected with 400', async () => {
@@ -365,7 +365,7 @@ test('a malformed address id is rejected with 400', async () => {
 });
 
 test('authenticated address writes require a matching CSRF token', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const session = await login(app, 'csrf@example.com');
 
   const missing = await request(app)
@@ -386,5 +386,5 @@ test('authenticated address writes require a matching CSRF token', async () => {
     .set('Cookie', session.cookieHeader);
   assert.equal(delMissing.status, 403);
 
-  assert.equal(prisma.__addresses.length, 0);
+  assert.equal(db.__addresses.length, 0);
 });

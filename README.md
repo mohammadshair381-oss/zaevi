@@ -2,7 +2,7 @@
 
 ZAEVI is a contemporary luxury fashion storefront built with static HTML, CSS
 and vanilla JavaScript, served by an Express backend. The backend stores the
-product catalog, customer accounts, addresses and orders in MySQL (via Prisma),
+product catalog, customer accounts, addresses and orders in MongoDB Atlas (via Mongoose),
 and exposes catalog, checkout, tracking and admin APIs.
 
 The backend serves the storefront files in place, and `products.json` is also
@@ -32,15 +32,14 @@ rewritten.
 ## Run it locally
 
 Requirements: Node.js >= 20.11 (developed and tested on Node.js 24.15.0), npm,
-and a MySQL/MariaDB instance.
+and a MongoDB Atlas cluster (MongoDB transactions need a replica set, which Atlas always provides).
 
 ```bash
 npm install
 
-# 1. Configure the database (see "Configuration" below), then:
-npx prisma generate        # generate the Prisma client (needs DATABASE_URL)
-npx prisma migrate deploy  # apply migrations
-npm run import:products    # import products.json into MySQL
+# 1. Set MONGODB_URI (see "Configuration" below), then:
+npm run db:setup           # create collections, indexes and default records
+npm run import:products    # import products.json into MongoDB
 
 npm start                  # http://localhost:3000
 npm run dev                # same, with file watching
@@ -62,7 +61,7 @@ Shipping, Returns, Privacy, Terms, Accessibility, Reset Password, Unsubscribe, A
 
 **Catalog / data**
 
-- `Product` and `ProductSize` Prisma models with an applied migration.
+- `Product` and `ProductSize` models, defined in `src/db/schema.js`.
 - Idempotent importer from `products.json`: preserves business ids (`ZV001`…)
   and size order, upserts in place, and never deletes rows.
 - Product availability is a separate business flag. Sizes remain selectable
@@ -129,20 +128,29 @@ Shipping, Returns, Privacy, Terms, Accessibility, Reset Password, Unsubscribe, A
 
 ## Database environments
 
-`src/config/database.js` decides which database is used, for the app, its scripts and
-Prisma CLI commands alike:
+`src/config/database.js` decides which database is used, for the app and its scripts alike:
 
 | Environment | Database | Requirement |
 | --- | --- | --- |
-| Development and test | `zaevi_test` | None. A `DATABASE_URL` naming `zaevi` is redirected. |
-| Production | `zaevi` | `NODE_ENV=production`, `DATABASE_URL` naming `zaevi`, and `ZAEVI_PRODUCTION_DB_APPROVED=true`. Otherwise the server refuses to start. |
+| Development and test | `zaevi_test` | None. A `MONGODB_URI` naming `zaevi` is redirected. |
+| Production | `zaevi` | `NODE_ENV=production` and `ZAEVI_PRODUCTION_DB_APPROVED=true`. A `MONGODB_URI` naming any other database refuses to start. |
 
 The server logs the database it is using when it starts. Demo accounts exist only in
 `zaevi_test`.
 
-To go live, once launch is approved: back up `zaevi`, run `npx prisma migrate deploy`
-with the three production settings above (this also applies the prepared CMS settings
-migration), then start the server with the same settings.
+### How data is stored
+
+`src/db/schema.js` defines every collection, its fields, relationships and indexes. `src/db/models.js`
+builds the Mongoose models from it, and `src/db/client.js` is the data client the routes call
+(`db.order.findUnique({ where, include })`). MongoDB has no foreign keys, automatic numbering or
+column limits, so the client supplies them:
+
+- **Numeric ids:** records keep the numeric ids the API and pages use, numbered through a `counters` collection.
+- **Relationships:** `include` and `select` load related records. Links to a missing record are refused.
+- **Delete rules:** deleting a record cascades, clears links or is refused, as set in `schema.js`.
+- **Matching:** collections ignore case and accents, so emails and coupon codes match as people expect, including in unique rules.
+- **Empty values:** an optional unique field allows many empty values, but no repeated value.
+- **Safety:** filters are built from a fixed list of operators, so a request can't pass in a MongoDB operator such as `{"$ne": null}`.
 
 ## Site Studio
 
@@ -190,7 +198,7 @@ Pre-launch records are kept in `docs/pre-launch` on the owner's machine, outside
 - **Official contact address:** `CONTACT_EMAIL` is shown on the website and invoices.
   Until it is set, the website offers only the contact form.
 - **GSTIN:** invoices print `BUSINESS_GSTIN`, or a marked placeholder until it is set.
-- **ATELIER10:** the newsletter coupon is created by a migration: 10% off, one use
+- **ATELIER10:** the newsletter coupon is created by `npm run db:setup`: 10% off, one use
   per customer, current newsletter subscribers only, 1,000 uses in total, until
   3 November 2027. The offer shown after subscribing is read from the coupon, so
   it stays accurate if the coupon changes or runs out.
@@ -230,7 +238,8 @@ Copy `.env.example` to `.env` and set the values:
 | --- | --- | --- | --- |
 | `NODE_ENV` | no | `development` | `development`, `test`, or `production` |
 | `PORT` | no | `3000` | HTTP port for the Express server |
-| `DATABASE_URL` | **yes** | — | MySQL/Prisma connection string (must start with `mysql://`) |
+| `MONGODB_URI` | **yes** | — | MongoDB Atlas link (must start with `mongodb://` or `mongodb+srv://`) |
+| `MONGODB_DNS_SERVERS` | no | — | DNS servers to use if connecting fails with `querySrv ECONNREFUSED` |
 | `SESSION_SECRET` | in production | — | Session signing secret, at least 32 characters |
 | `ORDER_RATE_LIMIT_MAX` | no | `30` | Order/tracking requests allowed per IP per window |
 | `ORDER_RATE_LIMIT_WINDOW_MS` | no | `60000` | Order/tracking rate-limit window |
@@ -240,29 +249,19 @@ Copy `.env.example` to `.env` and set the values:
 | `UPLOAD_DIR` | no | `../zaevi-cms-uploads` | Where uploaded images are stored; use a persistent disk on hosting |
 | `ADMIN_RECOVERY_*` | no | off | Emergency admin sign-in during an email outage; see docs/deployment.md |
 
-The connection string is validated at startup; MongoDB schemes are rejected.
+The link is validated at startup, and other database schemes are rejected.
 `.env` is git-ignored and blocked from static serving — never commit real
-credentials, and never use production credentials with a passwordless root
-account.
+credentials.
 
-### Local database
+### Local setup
 
-This project was developed against a local MariaDB/MySQL instance (XAMPP).
-Example `.env` value:
+Put your Atlas link in `.env` as `MONGODB_URI`, then:
 
 ```bash
-DATABASE_URL="mysql://root@127.0.0.1:3306/zaevi"
-```
-
-Create the `zaevi` database, then apply the migrations and import the catalog:
-
-```bash
-npx prisma migrate deploy
+npm run db:setup             # collections, indexes, default settings and coupon
 npm run import:products      # loads products.json (12 products, 49 size rows)
+node scripts/seed-demo-account.cjs   # demo accounts, zaevi_test only
 ```
-
-`npm run prisma:validate` validates the schema; `npm run prisma:generate`
-regenerates the Prisma client.
 
 ## Tests
 
@@ -270,29 +269,29 @@ regenerates the Prisma client.
 npm test
 ```
 
-Uses Node's built-in test runner with `supertest`, serialized to avoid races
-between live-database files. Mock tests need no database. The live-database
-tests (`tests/*.db.test.js`) run when `DATABASE_URL` points at a reachable MySQL
-and are skipped — never failed — otherwise.
+Uses Node's built-in test runner with `supertest`, one file at a time. Mock tests need no database.
+The live-database tests (`tests/*.db.test.js`) run when `MONGODB_URI` reaches a database, and are
+skipped, never failed, otherwise. They refuse any database whose name doesn't end in `zaevi_test`.
 
-Run database tests only against a dedicated test database. The admin
-live-database tests refuse to run unless the URL ends in `zaevi_test`:
+They create temporary records, so use a separate database. To do that, name it in the link, set up
+that database once, then run the suite:
 
 ```powershell
-$env:DATABASE_URL='mysql://root@127.0.0.1:3306/zaevi_test'
 $env:NODE_ENV='test'
+$env:MONGODB_URI='mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/ci_zaevi_test'
+npm run db:setup
+npm run import:products
+node scripts/seed-demo-account.cjs
 npm test
 ```
 
-Do not run the suite against the original `zaevi` database. The test suite
-creates temporary rows and should be isolated from real customer data.
+`tests/data-client.db.test.js` proves the data client's rules and races on a real database, and
+`tests/api-journey.db.test.js` walks every part of the shop over HTTP.
 
-### Inventory migration note
+### Retired stock field
 
-`prisma/migrations/20261021060000_add_product_size_stock` adds an unused, nullable
-`productsize.stock` column from a brief warehouse experiment. The schema marks it
-`@ignore`, and the application never reads or writes it. It has been applied to both
-`zaevi` and `zaevi_test`.
+`ProductSize.stock` is left over from a brief warehouse experiment. It stays hidden, and the
+application never reads or writes it.
 
 ## Deployment
 
@@ -301,8 +300,9 @@ Resend sends email over SMTP. Follow [docs/deployment.md](docs/deployment.md).
 
 ## Project layout
 
-- `src/` — Express app, routes, middleware, Prisma client wrapper, validators
-- `prisma/` — schema + migrations
+- `src/` — Express app, routes, middleware, validators
+- `src/db/` — collection definitions, Mongoose models, data client, connection
+- `scripts/db-setup.mjs` — creates collections, indexes and default records (`npm run db:setup`)
 - `scripts/import-products.js` — catalog importer
 - `scripts/build-static.mjs` — builds `dist/` for Vercel from the public file allowlist
 - `scripts/create-admin.cjs` — creates an administrator

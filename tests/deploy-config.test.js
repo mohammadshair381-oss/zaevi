@@ -8,6 +8,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { clientAddress, createRateLimiter, PROXY_SECRET_HEADER } from '../src/middleware/rate-limit.js';
 import { CONTENT_SECURITY_POLICY, isPublicStaticPath } from '../src/middleware/security.js';
+import { MODELS } from '../src/db/schema.js';
 import { resolveUploadDir } from '../src/routes/cms.js';
 import { buildStatic, deploymentProblems } from '../scripts/build-static.mjs';
 
@@ -50,7 +51,7 @@ test('visitors behind the proxy get separate limits and spoofed headers do not h
 });
 
 test('API responses are not cacheable by the CDN', async () => {
-  const app = createApp({ logger: { log() {}, error() {} }, sessionSecret: SECRET, prisma: {} });
+  const app = createApp({ logger: { log() {}, error() {} }, sessionSecret: SECRET, db: {} });
   const response = await request(app).get('/api/no-such-route');
   assert.equal(response.status, 404);
   assert.equal(response.headers['cache-control'], 'no-store');
@@ -120,30 +121,43 @@ test('render.yaml keeps uploads on a persistent disk', () => {
 
 test('render.yaml holds no secrets and uses a port the free plan allows', () => {
   const blueprint = read('render.yaml');
-  for (const key of ['DATABASE_URL', 'ZAEVI_PRODUCTION_DB_APPROVED', 'PROXY_SECRET', 'SMTP_PASS', 'EMAIL_FROM', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET']) {
+  for (const key of ['MONGODB_URI', 'ZAEVI_PRODUCTION_DB_APPROVED', 'PROXY_SECRET', 'SMTP_PASS', 'EMAIL_FROM', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET']) {
     assert.match(blueprint, new RegExp(`- key: ${key}\\n\\s+sync: false`), key);
   }
   assert.match(blueprint, /- key: SESSION_SECRET\n\s+generateValue: true/);
   assert.match(blueprint, /- key: SMTP_PORT\n\s+value: "2587"/);
-  assert.match(blueprint, /buildCommand: npm ci --include=dev && npx prisma generate/);
+  assert.match(blueprint, /buildCommand: npm ci --omit=dev/);
+  assert.doesNotMatch(blueprint, /prisma|mysql/i);
 });
 
-test('migrations name tables exactly as the schema does, as Linux MySQL requires', () => {
-  const models = new Set([...read('prisma/schema.prisma').matchAll(/^model (\w+) \{/gm)].map((match) => match[1]));
-  const folders = readdirSync(path.join(root, 'prisma/migrations'), { withFileTypes: true }).filter((entry) => entry.isDirectory());
-  assert.ok(folders.length > 0);
-  for (const { name } of folders) {
-    const sql = read(`prisma/migrations/${name}/migration.sql`);
-    for (const match of sql.matchAll(/\b(?:TABLE(?: IF (?:NOT )?EXISTS)?|REFERENCES|UPDATE|INTO|FROM|JOIN)\s+`(\w+)`/gi)) {
-      assert.ok(models.has(match[1]), `${name} refers to \`${match[1]}\`, which is not a model name`);
+test('every model has its own collection and every relationship points at a real model', () => {
+  const collections = Object.values(MODELS).map((def) => def.collection);
+  assert.equal(new Set(collections).size, collections.length);
+  for (const [name, def] of Object.entries(MODELS)) {
+    for (const [field, rel] of Object.entries(def.relations)) {
+      assert.ok(MODELS[rel.model], `${name}.${field} points at a missing model`);
+      if (rel.local) assert.ok(def.fields[rel.local], `${name}.${rel.local} is missing`);
+      else assert.ok(MODELS[rel.model].fields[rel.foreign], `${rel.model}.${rel.foreign} is missing`);
+    }
+    for (const index of def.indexes) {
+      for (const field of index.fields) assert.ok(def.fields[field], `index on missing field ${name}.${field}`);
     }
   }
 });
 
-test('Git keeps secrets out and migration bytes intact', () => {
+test('nothing in the project still depends on SQL', () => {
+  const pkg = JSON.parse(read('package.json'));
+  for (const name of ['@prisma/client', 'prisma', 'mysql2']) {
+    assert.equal(pkg.dependencies?.[name] ?? pkg.devDependencies?.[name], undefined, name);
+  }
+  assert.ok(pkg.dependencies.mongoose);
+  assert.equal(existsSync(path.join(root, 'prisma')), false);
+  assert.equal(existsSync(path.join(root, 'prisma.config.ts')), false);
+});
+
+test('Git keeps secrets out', () => {
   const ignored = read('.gitignore').split(/\r?\n/);
-  for (const rule of ['.env', '.env.*', '!.env.example', 'node_modules/', 'dist/', '*.sql', '!prisma/migrations/**/migration.sql', 'docs/pre-launch/', 'backups/', 'zaevi-cms-uploads/', '*.csv', '*.pem']) {
+  for (const rule of ['.env', '.env.*', '!.env.example', 'node_modules/', 'dist/', '*.sql', 'docs/pre-launch/', 'backups/', 'zaevi-cms-uploads/', '*.csv', '*.pem']) {
     assert.ok(ignored.includes(rule), rule);
   }
-  assert.match(read('.gitattributes'), /^prisma\/migrations\/\*\* -text$/m);
 });

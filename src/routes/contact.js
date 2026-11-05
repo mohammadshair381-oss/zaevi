@@ -4,7 +4,7 @@
  * real outcome is kept on the row, where admins can see it and retry.
  */
 import { Router } from 'express';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { sendEmail } from '../services/email.js';
@@ -40,7 +40,7 @@ export function parseContactMessage(body) {
 }
 
 /** Send the Client Services email for a stored message and record the outcome. */
-export async function deliverContactNotification(prisma, row, { env = process.env } = {}) {
+export async function deliverContactNotification(db, row, { env = process.env } = {}) {
   const to = String(env.CONTACT_NOTIFY_EMAIL || '').trim() || getOfficialContactEmail(env);
   const result = to
     ? await sendEmail({
@@ -56,14 +56,14 @@ export async function deliverContactNotification(prisma, row, { env = process.en
       ].join('\n'),
     }, { env })
     : { status: 'not_configured', error: 'Neither CONTACT_NOTIFY_EMAIL nor CONTACT_EMAIL is set' };
-  return prisma.contactMessage.update({
+  return db.contactMessage.update({
     where: { id: row.id },
     data: { notifyStatus: result.status, notifyError: result.error },
   });
 }
 
-export function createContactRouter({ getPrisma, contactRateLimit } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createContactRouter({ getDb, contactRateLimit } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
   const limiter = contactRateLimit === false
     ? (req, res, next) => next()
@@ -79,9 +79,9 @@ export function createContactRouter({ getPrisma, contactRateLimit } = {}) {
       if (req.body?.website) return res.status(201).json({ data: { received: true } });
 
       const data = parseContactMessage(req.body);
-      const prisma = resolvePrisma();
-      const row = await prisma.contactMessage.create({ data });
-      deliverContactNotification(prisma, row).catch((error) => {
+      const db = resolveDb();
+      const row = await db.contactMessage.create({ data });
+      deliverContactNotification(db, row).catch((error) => {
         console.error('[contact] Failed to update notification status:', error.message);
       });
       return res.status(201).json({ data: { received: true } });

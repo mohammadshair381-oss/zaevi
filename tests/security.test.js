@@ -47,7 +47,7 @@ const INTERNAL_FILES = [
   '/scripts/create-admin.cjs',
   '/admin.html',
   '/prisma.config.ts',
-  '/prisma/schema.prisma',
+  '/src/db/schema.js',
   '/prisma/migrations/20261021060000_add_product_size_stock/migration.sql',
 ];
 
@@ -103,7 +103,7 @@ test('unknown API routes still return JSON rather than the static 404', async ()
 
 test('protected responses never leak configuration contents', async () => {
   const env = await request(app).get('/.env');
-  assert.doesNotMatch(env.text ?? '', /DATABASE_URL/);
+  assert.doesNotMatch(env.text ?? '', /MONGODB_URI/);
 
   const pkg = await request(app).get('/package.json');
   assert.doesNotMatch(pkg.text ?? '', /"dependencies"/);

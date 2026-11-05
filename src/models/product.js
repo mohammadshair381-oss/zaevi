@@ -2,11 +2,11 @@
  * Product model validation and normalization.
  *
  * Pure, database-free helpers that turn a raw `products.json` entry into the
- * shape persisted by Prisma (Product + ProductSize). Keeping this logic free
- * of any Prisma import lets the catalog be validated by the automated test
- * suite without a generated client or a live MySQL server.
+ * shape persisted by database (Product + ProductSize). Keeping this logic free
+ * of any database import lets the catalog be validated by the automated test
+ * suite without a live database.
  *
- * Field mapping (products.json -> Prisma):
+ * Field mapping (products.json -> database):
  *   id    -> Product.id            (existing business code, preserved verbatim)
  *   name  -> Product.name
  *   cat   -> Product.category
@@ -22,7 +22,7 @@
 /** Genders present in the existing catalog. */
 export const PRODUCT_GENDERS = Object.freeze(['Women', 'Men', 'Unisex']);
 
-/** Column-length limits mirrored from prisma/schema.prisma. */
+/** Column-length limits mirrored from src/db/schema.js. */
 export const FIELD_LIMITS = Object.freeze({
   id: 32,
   name: 200,
@@ -91,7 +91,7 @@ function requireSizes(value, errors) {
 }
 
 /**
- * Validate and normalize one raw catalog entry into the Prisma Product shape.
+ * Validate and normalize one raw catalog entry into the database Product shape.
  * @param {unknown} raw
  * @returns {{
  *   id: string, name: string, category: string, gender: string, price: number,

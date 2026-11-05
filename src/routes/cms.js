@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { createRequireAdmin } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -26,11 +26,11 @@ function parsePositiveInt(value, field, { min = 1, max = 100 } = {}) {
   return number;
 }
 
-function handlePrismaError(error) {
-  if (error?.code === 'P2002') {
+function handleDataError(error) {
+  if (error?.code === 'DUPLICATE_KEY') {
     throw new HttpError(409, 'A CMS record with that unique value already exists');
   }
-  if (error?.code === 'P2025') {
+  if (error?.code === 'RECORD_NOT_FOUND') {
     throw new HttpError(404, 'CMS record not found');
   }
   throw error;
@@ -80,10 +80,10 @@ async function ensureUploadDir() {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 }
 
-export async function getOrCreateHomepagePage(prisma) {
+export async function getOrCreateHomepagePage(db) {
   const slug = 'home';
   const pageInclude = { draftRevision: true, publishedRevision: { select: { id: true, version: true, publishedAt: true } } };
-  let page = await prisma.cmsPage.findUnique({ where: { slug }, include: pageInclude });
+  let page = await db.cmsPage.findUnique({ where: { slug }, include: pageInclude });
   if (page) return page;
 
   const homepageState = validateHomepageState(CMS_DEFAULT_HOMEPAGE_STATE);
@@ -97,7 +97,7 @@ export async function getOrCreateHomepagePage(prisma) {
   };
 
   try {
-    const created = await prisma.$transaction(async (tx) => {
+    const created = await db.$transaction(async (tx) => {
       const createdPage = await tx.cmsPage.create({
         data: { slug, title: 'Home', status: 'draft' },
       });
@@ -112,25 +112,25 @@ export async function getOrCreateHomepagePage(prisma) {
     });
     return created;
   } catch (error) {
-    if (error?.code !== 'P2002') throw error;
-    const existing = await prisma.cmsPage.findUnique({ where: { slug }, include: pageInclude });
+    if (error?.code !== 'DUPLICATE_KEY') throw error;
+    const existing = await db.cmsPage.findUnique({ where: { slug }, include: pageInclude });
     if (existing) return existing;
     throw error;
   }
 }
 
-export function createCmsRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
-  const requireAdmin = createRequireAdmin({ getPrisma: resolvePrisma });
+export function createCmsRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
+  const requireAdmin = createRequireAdmin({ getDb: resolveDb });
   const router = Router();
 
   router.use(requireAdmin);
   router.use(validateCsrf);
 
-  async function getOrCreateSettings(prisma) {
-    let settings = await prisma.websiteSetting.findUnique({ where: { id: 1 } });
+  async function getOrCreateSettings(db) {
+    let settings = await db.websiteSetting.findUnique({ where: { id: 1 } });
     if (!settings) {
-      settings = await prisma.websiteSetting.create({
+      settings = await db.websiteSetting.create({
         data: { id: 1, ...CMS_DEFAULT_SETTINGS },
       });
     }
@@ -139,8 +139,8 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.get('/settings', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const settings = await getOrCreateSettings(prisma);
+      const db = resolveDb();
+      const settings = await getOrCreateSettings(db);
       return res.status(200).json({ data: settings });
     } catch (error) {
       return next(error);
@@ -149,13 +149,13 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.put('/settings', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const current = await getOrCreateSettings(prisma);
+      const db = resolveDb();
+      const current = await getOrCreateSettings(db);
       const result = validateWebsiteSettings(req.body, current);
       if (result.errors.length > 0) {
         throw new HttpError(400, result.errors.join('; '));
       }
-      const updated = await prisma.websiteSetting.update({
+      const updated = await db.websiteSetting.update({
         where: { id: 1 },
         data: {
           ...result.value,
@@ -166,7 +166,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       return res.status(200).json({ data: updated });
     } catch (error) {
       try {
-        handlePrismaError(error);
+        handleDataError(error);
       } catch (mapped) {
         return next(mapped);
       }
@@ -176,8 +176,8 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.get('/homepage', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const page = await getOrCreateHomepagePage(prisma);
+      const db = resolveDb();
+      const page = await getOrCreateHomepagePage(db);
       const state = page.draftRevision?.snapshot?.homepage ?? CMS_DEFAULT_HOMEPAGE_STATE;
       return res.status(200).json({ data: { page, state } });
     } catch (error) {
@@ -187,8 +187,8 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.put('/homepage', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const page = await getOrCreateHomepagePage(prisma);
+      const db = resolveDb();
+      const page = await getOrCreateHomepagePage(db);
       const input = req.body?.state ?? req.body?.homepage ?? req.body;
       const current = page.draftRevision?.snapshot?.homepage ?? null;
       const result = validateHomepageState(input, current);
@@ -207,7 +207,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       const nextVersion = (page.draftRevision?.version ?? 0) + 1;
       let updated;
       try {
-        updated = await prisma.$transaction(async (tx) => {
+        updated = await db.$transaction(async (tx) => {
           const revision = await tx.cmsPageRevision.create({
             data: { pageId: page.id, version: nextVersion, snapshot, createdBy: req.customerId ?? null },
           });
@@ -226,8 +226,8 @@ export function createCmsRouter({ getPrisma } = {}) {
           });
         });
       } catch (error) {
-        if (error?.code !== 'CMS_DRAFT_CONFLICT' && error?.code !== 'P2002') throw error;
-        const latest = await prisma.cmsPage.findUnique({
+        if (error?.code !== 'CMS_DRAFT_CONFLICT' && error?.code !== 'DUPLICATE_KEY') throw error;
+        const latest = await db.cmsPage.findUnique({
           where: { id: page.id },
           include: { draftRevision: true, publishedRevision: { select: { id: true, version: true, publishedAt: true } } },
         });
@@ -240,15 +240,15 @@ export function createCmsRouter({ getPrisma } = {}) {
       invalidateCmsCache();
       return res.status(200).json({ data: { page: updated, state: result.value } });
     } catch (error) {
-      try { handlePrismaError(error); } catch (mapped) { return next(mapped); }
+      try { handleDataError(error); } catch (mapped) { return next(mapped); }
       return next(error);
     }
   });
 
   router.get('/pages', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const pages = await prisma.cmsPage.findMany({
+      const db = resolveDb();
+      const pages = await db.cmsPage.findMany({
         orderBy: { updatedAt: 'desc' },
         include: {
           draftRevision: { select: { id: true, version: true, createdAt: true } },
@@ -263,7 +263,7 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.post('/pages', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const metadata = validatePageMetadata(req.body);
       if (metadata.errors.length > 0) {
         throw new HttpError(400, metadata.errors.join('; '));
@@ -283,7 +283,7 @@ export function createCmsRouter({ getPrisma } = {}) {
         throw new HttpError(400, snapshotResult.errors.join('; '));
       }
 
-      const page = await prisma.$transaction(async (tx) => {
+      const page = await db.$transaction(async (tx) => {
         const createdPage = await tx.cmsPage.create({
           data: {
             slug: metadata.value.slug,
@@ -314,7 +314,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       return res.status(201).json({ data: page });
     } catch (error) {
       try {
-        handlePrismaError(error);
+        handleDataError(error);
       } catch (mapped) {
         return next(mapped);
       }
@@ -325,8 +325,8 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.get('/pages/:slug', async (req, res, next) => {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({
         where: { slug },
         include: {
           draftRevision: true,
@@ -343,8 +343,8 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.put('/pages/:slug', async (req, res, next) => {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
-      const prisma = resolvePrisma();
-      const existing = await prisma.cmsPage.findUnique({
+      const db = resolveDb();
+      const existing = await db.cmsPage.findUnique({
         where: { slug },
         include: { draftRevision: true },
       });
@@ -385,7 +385,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       }
 
       const nextVersion = (existing.draftRevision?.version ?? 0) + 1;
-      const updatedPage = await prisma.$transaction(async (tx) => {
+      const updatedPage = await db.$transaction(async (tx) => {
         const revision = await tx.cmsPageRevision.create({
           data: {
             pageId: existing.id,
@@ -414,7 +414,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       return res.status(200).json({ data: updatedPage });
     } catch (error) {
       try {
-        handlePrismaError(error);
+        handleDataError(error);
       } catch (mapped) {
         return next(mapped);
       }
@@ -425,10 +425,10 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.get('/pages/:slug/revisions', async (req, res, next) => {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({ where: { slug }, select: { id: true } });
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({ where: { slug }, select: { id: true } });
       if (!page) throw new HttpError(404, 'Page not found');
-      const revisions = await prisma.cmsPageRevision.findMany({
+      const revisions = await db.cmsPageRevision.findMany({
         where: { pageId: page.id },
         orderBy: { version: 'desc' },
         select: {
@@ -450,8 +450,8 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.post('/pages/:slug/publish', async (req, res, next) => {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({
         where: { slug },
         include: { draftRevision: true },
       });
@@ -459,7 +459,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       if (!page.draftRevisionId) throw new HttpError(400, 'Page has no draft revision to publish');
 
       const publishedAt = new Date();
-      const updated = await prisma.$transaction(async (tx) => {
+      const updated = await db.$transaction(async (tx) => {
         await tx.cmsPageRevision.update({
           where: { id: page.draftRevisionId },
           data: { publishedAt },
@@ -486,13 +486,13 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.post('/pages/:slug/revert', async (req, res, next) => {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({ where: { slug } });
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({ where: { slug } });
       if (!page) throw new HttpError(404, 'Page not found');
       const targetRevisionId = page.publishedRevisionId ?? null;
       if (!targetRevisionId) throw new HttpError(400, 'Page has no published revision to revert to');
 
-      const updated = await prisma.cmsPage.update({
+      const updated = await db.cmsPage.update({
         where: { id: page.id },
         data: { draftRevisionId: targetRevisionId, status: 'draft' },
         include: {
@@ -511,14 +511,14 @@ export function createCmsRouter({ getPrisma } = {}) {
     try {
       const slug = normalizeSlugFromParam(req.params.slug);
       const revisionId = parsePositiveInt(req.params.id, 'id');
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({ where: { slug } });
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({ where: { slug } });
       if (!page) throw new HttpError(404, 'Page not found');
-      const source = await prisma.cmsPageRevision.findUnique({ where: { id: revisionId } });
+      const source = await db.cmsPageRevision.findUnique({ where: { id: revisionId } });
       if (!source || source.pageId !== page.id) throw new HttpError(404, 'Revision not found');
 
-      const nextVersion = await getNextRevisionVersion(prisma, page.id);
-      const updated = await prisma.$transaction(async (tx) => {
+      const nextVersion = await getNextRevisionVersion(db, page.id);
+      const updated = await db.$transaction(async (tx) => {
         const restored = await tx.cmsPageRevision.create({
           data: {
             pageId: page.id,
@@ -546,8 +546,8 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.get('/media', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const assets = await prisma.mediaAsset.findMany({
+      const db = resolveDb();
+      const assets = await db.mediaAsset.findMany({
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -567,7 +567,7 @@ export function createCmsRouter({ getPrisma } = {}) {
 
   router.post('/media', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
         throw new HttpError(400, 'Request body must be a JSON object');
       }
@@ -604,7 +604,7 @@ export function createCmsRouter({ getPrisma } = {}) {
 
       let asset;
       try {
-        asset = await prisma.mediaAsset.create({
+        asset = await db.mediaAsset.create({
           data: {
             storageKey,
             url: `/api/cms/media/${storageKey}`,
@@ -624,7 +624,7 @@ export function createCmsRouter({ getPrisma } = {}) {
       return res.status(201).json({ data: asset });
     } catch (error) {
       try {
-        handlePrismaError(error);
+        handleDataError(error);
       } catch (mapped) {
         return next(mapped);
       }
@@ -635,16 +635,16 @@ export function createCmsRouter({ getPrisma } = {}) {
   router.delete('/media/:id', async (req, res, next) => {
     try {
       const id = parsePositiveInt(req.params.id, 'id');
-      const prisma = resolvePrisma();
-      const asset = await prisma.mediaAsset.findUnique({ where: { id } });
+      const db = resolveDb();
+      const asset = await db.mediaAsset.findUnique({ where: { id } });
       if (!asset) throw new HttpError(404, 'Media asset not found');
 
-      const revisions = await prisma.cmsPageRevision.findMany({
+      const revisions = await db.cmsPageRevision.findMany({
         select: { snapshot: true },
       });
       let settings = null;
       try {
-        settings = await prisma.websiteSetting.findUnique({ where: { id: 1 } });
+        settings = await db.websiteSetting.findUnique({ where: { id: 1 } });
       } catch {
         settings = null;
       }
@@ -653,7 +653,7 @@ export function createCmsRouter({ getPrisma } = {}) {
         throw new HttpError(409, 'Media asset is referenced by CMS content and cannot be deleted');
       }
 
-      await prisma.mediaAsset.delete({ where: { id } });
+      await db.mediaAsset.delete({ where: { id } });
       await fs.unlink(path.join(UPLOAD_DIR, asset.storageKey)).catch(() => {});
 
       return res.status(204).send();
@@ -671,8 +671,8 @@ function normalizeSlugFromParam(value) {
   return slug;
 }
 
-async function getNextRevisionVersion(prisma, pageId) {
-  const latest = await prisma.cmsPageRevision.findFirst({
+async function getNextRevisionVersion(db, pageId) {
+  const latest = await db.cmsPageRevision.findFirst({
     where: { pageId },
     orderBy: { version: 'desc' },
     select: { version: true },
@@ -711,8 +711,8 @@ function toPublicSettings(settings) {
   return result;
 }
 
-export function createCmsPublicRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createCmsPublicRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   router.get(['/settings', '/settings/public'], async (req, res, next) => {
@@ -722,10 +722,10 @@ export function createCmsPublicRouter({ getPrisma } = {}) {
         return res.status(200).json({ data: cached });
       }
 
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       let settings = null;
       try {
-        settings = await prisma.websiteSetting.findUnique({ where: { id: 1 } });
+        settings = await db.websiteSetting.findUnique({ where: { id: 1 } });
       } catch {
         settings = null;
       }
@@ -748,8 +748,8 @@ export function createCmsPublicRouter({ getPrisma } = {}) {
         return res.status(200).json({ data: cached });
       }
 
-      const prisma = resolvePrisma();
-      const page = await prisma.cmsPage.findUnique({
+      const db = resolveDb();
+      const page = await db.cmsPage.findUnique({
         where: { slug },
         select: {
           slug: true,
@@ -793,8 +793,8 @@ export function createCmsPublicRouter({ getPrisma } = {}) {
       const key = String(req.params.key || '').trim();
       if (!/^[A-Za-z0-9._-]+$/.test(key)) throw new HttpError(400, 'Invalid media key');
 
-      const prisma = resolvePrisma();
-      const asset = await prisma.mediaAsset.findFirst({ where: { storageKey: key } });
+      const db = resolveDb();
+      const asset = await db.mediaAsset.findFirst({ where: { storageKey: key } });
       if (!asset) throw new HttpError(404, 'Media not found');
 
       const filePath = path.join(UPLOAD_DIR, asset.storageKey);

@@ -14,7 +14,7 @@ import {
 } from '../src/models/product-query.js';
 import { buildProductWhere, serializeProduct } from '../src/routes/products.js';
 
-// Mock tests: an in-memory fake Prisma client backs the API so the filters,
+// Mock tests: an in-memory fake data client backs the API so the filters,
 // pagination and error handling can be exercised without a live database.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -65,7 +65,7 @@ function matchesWhere(row, where) {
   return true;
 }
 
-function createFakePrisma(rows) {
+function createFakeDb(rows) {
   return {
     product: {
       async count({ where } = {}) {
@@ -88,7 +88,7 @@ function createFakePrisma(rows) {
 
 const silentLogger = { log() {}, error() {} };
 const catalog = loadCatalog();
-const app = createApp({ prisma: createFakePrisma(catalog), logger: silentLogger });
+const app = createApp({ db: createFakeDb(catalog), logger: silentLogger });
 
 function ids(body) {
   return body.data.map((product) => product.id);
@@ -243,7 +243,7 @@ test('unexpected database errors return the standardized 500 body', async () => 
       },
     },
   };
-  const failingApp = createApp({ prisma: failing, logger: silentLogger });
+  const failingApp = createApp({ db: failing, logger: silentLogger });
 
   const listRes = await request(failingApp).get('/api/products');
   assert.equal(listRes.status, 500);

@@ -16,7 +16,7 @@
  * - If the email already exists, the script reports it and only updates the
  *   stored password after an explicit confirmation.
  * - The script shows which database (host, database name) it is about to use
- *   (from DATABASE_URL) and requires a visible confirmation before writing.
+ *   (from MONGODB_URI, without its password) and requires a visible confirmation before writing.
  *   It contains NO default credentials.
  */
 
@@ -88,16 +88,18 @@ function promptVisible(questionText) {
 }
 
 async function main() {
+  require('dotenv/config');
+  const fromRoot = (...parts) => `file://${require('node:path').resolve(__dirname, '..', ...parts).split('\\').join('/')}`;
   // Show the write target without revealing credentials.
-  const dbUrl = process.env.DATABASE_URL || '(not set)';
-  let dbDesc;
+  const { resolveDatabase } = await import(fromRoot('src', 'config', 'database.js'));
+  const { uri, dbName } = resolveDatabase();
+  let host = '(unrecognized link)';
   try {
-    const parsed = new URL(dbUrl);
-    dbDesc = `${parsed.hostname}:${parsed.port || 3306}/${parsed.pathname.replace(/^\//, '')}`;
+    host = new URL(uri).hostname;
   } catch {
-    dbDesc = '(unrecognized DATABASE_URL format)';
+    // Shown as unrecognized.
   }
-  console.log(`\nZAEVI admin bootstrap\nDatabase target: ${dbDesc}\n`);
+  console.log(`\nZAEVI admin bootstrap\nDatabase target: ${host}/${dbName}\n`);
 
   const srcPath = require('node:path').resolve(__dirname, '..', 'src', 'models', 'auth.js');
   const { hashPassword, verifyPassword, PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } =
@@ -124,10 +126,10 @@ async function main() {
   // Hash before any DB work; the plaintext lives only in this closure.
   const passwordHash = await hashPassword(password);
 
-  const { PrismaClient } = require('@prisma/client');
-  const prisma = new PrismaClient({ log: ['error'] });
+  const { getDbClient } = await import(fromRoot('src', 'db', 'connect.js'));
+  const db = getDbClient();
   try {
-    const existing = await prisma.customer.findUnique({ where: { email } });
+    const existing = await db.customer.findUnique({ where: { email } });
     if (existing) {
       if (existing.passwordHash) {
         const selfCheck = await verifyPassword(password, existing.passwordHash);
@@ -146,14 +148,14 @@ async function main() {
         console.log('Aborted. No changes were made.');
         return;
       }
-      await prisma.customer.update({
+      await db.customer.update({
         where: { email },
         data: { passwordHash, role: 'admin' },
       });
       console.log('Existing account updated: password set, role=admin.');
     } else {
       const name = (await promptVisible('Display name (optional, Enter to skip): ')).trim();
-      await prisma.customer.create({
+      await db.customer.create({
         data: {
           email,
           name: name || null,
@@ -164,7 +166,7 @@ async function main() {
       console.log(`Administrator account created for ${email}.`);
     }
   } finally {
-    await prisma.$disconnect();
+    await db.$disconnect();
   }
 }
 

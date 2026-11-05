@@ -7,12 +7,12 @@ function buildApp() {
   const customers = new Map();
   let customerSeq = 0;
 
-  const prisma = {
+  const db = {
     customer: {
       async create({ data }) {
         if (customers.has(data.email)) {
           const error = new Error('Unique constraint failed on the fields: (`email`)');
-          error.code = 'P2002';
+          error.code = 'DUPLICATE_KEY';
           error.meta = { target: 'Customer_email_key' };
           throw error;
         }
@@ -43,7 +43,7 @@ function buildApp() {
   };
 
   return createApp({ 
-    prisma, 
+    db, 
     logger: { log() {}, error() {} }, 
     sessionSecret: 'test-secret-32-characters-long-enough',
     authRateLimit: false,
@@ -203,12 +203,12 @@ test('POST /api/auth/login - rate limited', async () => {
   const customers = new Map();
   let customerSeq = 0;
 
-  const prisma = {
+  const db = {
     customer: {
       async create({ data }) {
         if (customers.has(data.email)) {
           const error = new Error('Unique constraint failed on the fields: (`email`)');
-          error.code = 'P2002';
+          error.code = 'DUPLICATE_KEY';
           error.meta = { target: 'Customer_email_key' };
           throw error;
         }
@@ -233,7 +233,7 @@ test('POST /api/auth/login - rate limited', async () => {
   };
 
   const app = createApp({ 
-    prisma, 
+    db, 
     logger: { log() {}, error() {} }, 
     sessionSecret: 'test-secret-32-characters-long-enough',
     authRateLimit: false,

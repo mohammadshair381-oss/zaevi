@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 
 // Live-database (zaevi_test ONLY) integration test for the production workflow.
-// Skipped (never failed) when DATABASE_URL is unset or MySQL is unreachable.
+// Skipped (never failed) when MONGODB_URI is unset or the database is unreachable.
 //
 // STRICT TARGET RULE: refuses to run against anything but zaevi_test. No schema
 // change is required: all workflow values fit the existing VARCHAR(20) status
@@ -12,36 +12,39 @@ import request from 'supertest';
 import 'dotenv/config';
 
 import { createApp, projectRoot } from '../src/app.js';
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
 import { hashPassword } from '../src/models/auth.js';
 
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.endsWith('zaevi_test')) {
-  throw new Error(`admin-order-status.db.test.js safety guard: refusing to run against "${process.env.DATABASE_URL}"`);
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('admin-order-status.db.test.js refuses to run against this database');
 }
+
 
 function uniqueSuffix() {
   return randomBytes(6).toString('hex');
 }
 
 async function connectOrSkip(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
-    return prisma;
+    await db.$ping();
+    return db;
   } catch (error) {
     t.diagnostic(`database unavailable: ${error.message}`);
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
 
 test('zaevi_test: production status advances and persists without any stock column', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   const suffix = uniqueSuffix();
   const adminEmail = `zv-workflow-${suffix}@zaevi.test`;
@@ -55,7 +58,7 @@ test('zaevi_test: production status advances and persists without any stock colu
   });
 
   try {
-    await prisma.customer.create({
+    await db.customer.create({
       data: {
         email: adminEmail,
         name: 'Workflow Admin',
@@ -64,7 +67,7 @@ test('zaevi_test: production status advances and persists without any stock colu
       },
     });
 
-    const fixture = await prisma.order.create({
+    const fixture = await db.order.create({
       data: {
         reference,
         idempotencyKey: `workflow-${suffix}`,
@@ -112,7 +115,7 @@ test('zaevi_test: production status advances and persists without any stock colu
       .set('Cookie', cookie)
       .send({ status: 'confirmed' });
     assert.equal(noCsrf.status, 403);
-    assert.equal((await prisma.order.findUnique({ where: { reference } })).status, 'pending');
+    assert.equal((await db.order.findUnique({ where: { reference } })).status, 'pending');
 
     // Stage skipping is rejected.
     const skipped = await request(app)
@@ -139,13 +142,13 @@ test('zaevi_test: production status advances and persists without any stock colu
       assert.equal(res.body.data.statusLabel, label);
     }
 
-    const persisted = await prisma.order.findUnique({ where: { reference } });
+    const persisted = await db.order.findUnique({ where: { reference } });
     assert.equal(persisted.status, 'delivered');
     assert.equal(persisted.totalMinor, 1890000, 'order data untouched by status changes');
     assert.equal(fixture.items.length, 1);
   } finally {
-    await prisma.order.deleteMany({ where: { reference } });
-    await prisma.customer.deleteMany({ where: { email: adminEmail } });
+    await db.order.deleteMany({ where: { reference } });
+    await db.customer.deleteMany({ where: { email: adminEmail } });
     await disconnectDB();
   }
 });

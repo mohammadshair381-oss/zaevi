@@ -1,5 +1,5 @@
 /**
- * Import the existing `products.json` catalog into MySQL via Prisma.
+ * Import the existing `products.json` catalog into MongoDB.
  *
  * Design goals:
  * - Read and validate the *existing* `products.json` (never modified).
@@ -9,7 +9,7 @@
  *   duplicate products or duplicate sizes.
  * - Never delete rows or reset the database.
  * - Report created / updated / skipped / failed counts and always close the
- *   Prisma connection.
+ *   database connection.
  *
  * Run with:  npm run import:products
  * (or)       node scripts/import-products.js
@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
 import { normalizeProduct, ProductValidationError } from '../src/models/product.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -38,7 +38,7 @@ export const SCALAR_FIELDS = Object.freeze([
 ]);
 
 /**
- * Build the Prisma `create` payload (scalars + nested ordered sizes).
+ * Build the database `create` payload (scalars + nested ordered sizes).
  * `available` is intentionally omitted so the schema default (`true`) applies.
  */
 export function buildProductCreateData(desired) {
@@ -58,7 +58,7 @@ export function buildProductCreateData(desired) {
   };
 }
 
-/** Build the Prisma `update` payload (scalars only; sizes are upserted). */
+/** Build the database `update` payload (scalars only; sizes are upserted). */
 export function buildProductUpdateData(desired) {
   const data = {};
   for (const field of SCALAR_FIELDS) {
@@ -92,14 +92,14 @@ export function sizesEqual(existingSizes, desiredSizes) {
  * Uses the business id as the upsert key; sizes are upserted on the
  * (productId, size) unique constraint so no duplicates are created.
  */
-export async function importOneProduct(prisma, desired) {
-  const existing = await prisma.product.findUnique({
+export async function importOneProduct(db, desired) {
+  const existing = await db.product.findUnique({
     where: { id: desired.id },
     include: { sizes: { orderBy: { position: 'asc' } } },
   });
 
   if (!existing) {
-    await prisma.product.create({ data: buildProductCreateData(desired) });
+    await db.product.create({ data: buildProductCreateData(desired) });
     return 'created';
   }
 
@@ -110,7 +110,7 @@ export async function importOneProduct(prisma, desired) {
     return 'skipped';
   }
 
-  await prisma.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     if (scalarChanged) {
       await tx.product.update({
         where: { id: desired.id },
@@ -135,10 +135,10 @@ export async function importOneProduct(prisma, desired) {
  * Import a catalog array. Validates each entry, imports the valid ones and
  * records failures without aborting the whole run.
  *
- * @param {{ prisma: import('@prisma/client').PrismaClient, raw: unknown[], logger?: Console }} options
+ * @param {{ db: import('../src/db/client.js').DataClient, raw: unknown[], logger?: Console }} options
  * @returns {Promise<{ total:number, created:number, updated:number, skipped:number, failed:number, failures:Array<{id:unknown,error:string}> }>}
  */
-export async function importProducts({ prisma, raw, logger = console }) {
+export async function importProducts({ db, raw, logger = console }) {
   if (!Array.isArray(raw)) {
     throw new Error('products.json must contain a JSON array');
   }
@@ -163,7 +163,7 @@ export async function importProducts({ prisma, raw, logger = console }) {
       }
       seenIds.add(desired.id);
 
-      const action = await importOneProduct(prisma, desired);
+      const action = await importOneProduct(db, desired);
       summary[action] += 1;
       logger.log(`[import] ${action.padEnd(7)} ${desired.id} — ${desired.name}`);
     } catch (error) {
@@ -192,10 +192,10 @@ async function main() {
     return;
   }
   const raw = JSON.parse(readFileSync(PRODUCTS_FILE, 'utf8'));
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   let summary;
   try {
-    summary = await importProducts({ prisma, raw });
+    summary = await importProducts({ db, raw });
   } finally {
     await disconnectDB();
   }

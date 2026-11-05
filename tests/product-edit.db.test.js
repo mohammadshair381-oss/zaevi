@@ -7,28 +7,30 @@ import 'dotenv/config';
 import request from 'supertest';
 
 import { createApp } from '../src/app.js';
-import { databaseNameOf, DEVELOPMENT_DATABASE } from '../src/config/database.js';
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
 
-if (process.env.DATABASE_URL && databaseNameOf(process.env.DATABASE_URL) !== DEVELOPMENT_DATABASE) {
-  throw new Error('product-edit.db.test.js safety guard: only runs on the development database');
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('product-edit.db.test.js refuses to run against this database');
 }
+
 
 const silentLogger = { error() {}, warn() {}, info() {}, log() {} };
 const SESSION_SECRET = 'test-session-secret-at-least-32-characters';
 const ROLLBACK_MESSAGE = 'rollback this test';
 
 async function connect(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const client = getPrismaClient();
+  const client = getDbClient();
   try {
-    await client.$queryRawUnsafe('SELECT 1');
+    await client.$ping();
     return client;
   } catch {
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
@@ -40,10 +42,10 @@ async function inRolledBackTransaction(client, fn) {
   let finished = false;
   try {
     await client.$transaction(async (tx) => {
-      const prisma = new Proxy(tx, {
+      const db = new Proxy(tx, {
         get: (target, key) => (key === '$transaction' ? (work) => work(tx) : target[key]),
       });
-      const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
+      const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
       const login = await request(app).post('/api/auth/login').send({ email: 'demo.admin@zaevi.test', password: 'DemoAdmin123!' });
       assert.equal(login.status, 200);
       const pairs = login.headers['set-cookie'].map((c) => c.split(';')[0]);
@@ -138,7 +140,8 @@ test('changing sizes keeps the rows of sizes that stay, including the unused sto
     const before = await tx.productSize.findMany({ where: { productId: 'ZV003' }, orderBy: { position: 'asc' } });
     assert.ok(before.length >= 2);
     const [kept, ...others] = before;
-    await tx.$executeRaw`UPDATE ProductSize SET stock = 7 WHERE id = ${kept.id}`;
+    const { ProductSize } = await tx.$models();
+    await ProductSize.updateOne({ _id: kept.id }, { $set: { stock: 7 } }, { session: tx.$session });
 
     const res = await patch('ZV003', { sizes: ['NEW', kept.size] });
     assert.equal(res.status, 200);
@@ -148,7 +151,7 @@ test('changing sizes keeps the rows of sizes that stay, including the unused sto
     assert.equal(after.length, 2);
     assert.equal(after[1].id, kept.id, 'the row was kept, not recreated');
     assert.equal(after[1].position, 1);
-    const [{ stock }] = await tx.$queryRaw`SELECT stock FROM ProductSize WHERE id = ${kept.id}`;
+    const { stock } = await ProductSize.findById(kept.id).select('+stock').session(tx.$session).lean();
     assert.equal(Number(stock), 7);
     const removed = await tx.productSize.count({ where: { id: { in: others.map((row) => row.id) } } });
     assert.equal(removed, 0);

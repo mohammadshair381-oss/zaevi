@@ -10,7 +10,7 @@
  */
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -46,16 +46,16 @@ function validateAddress(a = {}) {
   return null;
 }
 
-export function createAddressRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createAddressRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   router.use(requireAuth);
 
   router.get('/addresses', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const addresses = await prisma.address.findMany({
+      const db = resolveDb();
+      const addresses = await db.address.findMany({
         where: { customerId: req.customerId },
         orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
       });
@@ -70,14 +70,14 @@ export function createAddressRouter({ getPrisma } = {}) {
       const data = normalizeAddress(req.body);
       const v = validateAddress(data);
       if (v) throw new HttpError(400, v);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       if (data.isDefault) {
-        await prisma.address.updateMany({
+        await db.address.updateMany({
           where: { customerId: req.customerId, isDefault: true },
           data: { isDefault: false },
         });
       }
-      const addr = await prisma.address.create({
+      const addr = await db.address.create({
         data: {
           customerId: req.customerId,
           fullName: data.fullName,
@@ -105,8 +105,8 @@ export function createAddressRouter({ getPrisma } = {}) {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id < 1) throw new HttpError(400, 'Invalid address');
       const data = normalizeAddress(req.body);
-      const prisma = resolvePrisma();
-      const existing = await prisma.address.findFirst({
+      const db = resolveDb();
+      const existing = await db.address.findFirst({
         where: { id, customerId: req.customerId },
       });
       if (!existing) throw new HttpError(404, 'Address not found');
@@ -124,12 +124,12 @@ export function createAddressRouter({ getPrisma } = {}) {
       const v = validateAddress(merged);
       if (v) throw new HttpError(400, v);
       if (data.isDefault) {
-        await prisma.address.updateMany({
+        await db.address.updateMany({
           where: { customerId: req.customerId, isDefault: true, id: { not: id } },
           data: { isDefault: false },
         });
       }
-      const addr = await prisma.address.update({
+      const addr = await db.address.update({
         where: { id },
         data: {
           fullName: data.fullName ?? existing.fullName,
@@ -156,12 +156,12 @@ export function createAddressRouter({ getPrisma } = {}) {
     try {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id < 1) throw new HttpError(400, 'Invalid address');
-      const prisma = resolvePrisma();
-      const existing = await prisma.address.findFirst({
+      const db = resolveDb();
+      const existing = await db.address.findFirst({
         where: { id, customerId: req.customerId },
       });
       if (!existing) throw new HttpError(404, 'Address not found');
-      await prisma.address.delete({ where: { id } });
+      await db.address.delete({ where: { id } });
       res.json({ data: { id } });
     } catch (error) {
       next(error);
@@ -172,18 +172,18 @@ export function createAddressRouter({ getPrisma } = {}) {
     try {
       const id = Number(req.params.id);
       if (!Number.isInteger(id) || id < 1) throw new HttpError(400, 'Invalid address');
-      const prisma = resolvePrisma();
-      const existing = await prisma.address.findFirst({
+      const db = resolveDb();
+      const existing = await db.address.findFirst({
         where: { id, customerId: req.customerId },
       });
       if (!existing) throw new HttpError(404, 'Address not found');
-      await prisma.$transaction([
-        prisma.address.updateMany({
+      await db.$transaction(async (tx) => {
+        await tx.address.updateMany({
           where: { customerId: req.customerId, isDefault: true },
           data: { isDefault: false },
-        }),
-        prisma.address.update({ where: { id }, data: { isDefault: true } }),
-      ]);
+        });
+        await tx.address.update({ where: { id }, data: { isDefault: true } });
+      });
       res.json({ data: { ok: true } });
     } catch (error) {
       next(error);

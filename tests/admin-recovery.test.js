@@ -18,7 +18,7 @@ let codeHash;
 let passwordHash;
 const saved = {};
 
-function fakePrisma() {
+function fakeDb() {
   const people = [
     { id: 1, email: ADMIN_EMAIL, name: 'Owner', phone: null, role: 'admin', passwordHash, createdAt: new Date() },
     { id: 2, email: 'shopper@zaevi.test', name: 'Shopper', phone: null, role: 'customer', passwordHash, createdAt: new Date() },
@@ -37,9 +37,9 @@ function fakePrisma() {
   };
 }
 
-const build = (prisma = fakePrisma()) => ({
-  prisma,
-  app: createApp({ prisma, sessionSecret: SECRET, logger: { log() {}, error() {} }, emailOtp: true, loginRateLimit: false, authRateLimit: false }),
+const build = (db = fakeDb()) => ({
+  db,
+  app: createApp({ db, sessionSecret: SECRET, logger: { log() {}, error() {} }, emailOtp: true, loginRateLimit: false, authRateLimit: false }),
 });
 
 function configure(email = ADMIN_EMAIL) {
@@ -93,7 +93,7 @@ test('stays off unless every setting is valid', () => {
 
 test('the right password and code open a normal admin session, and it is recorded', async () => {
   configure();
-  const { app, prisma } = build();
+  const { app, db } = build();
   const page = await request(app).get('/admin/recovery');
   assert.equal(page.status, 200);
   assert.equal(page.headers['cache-control'], 'no-store');
@@ -106,8 +106,8 @@ test('the right password and code open a normal admin session, and it is recorde
   const cookie = signedIn.headers['set-cookie'].map((c) => c.split(';')[0]).join('; ');
   assert.equal((await request(app).get('/admin').set('Cookie', cookie)).status, 200);
 
-  assert.equal(prisma.notifications.length, 1);
-  const [record] = prisma.notifications;
+  assert.equal(db.notifications.length, 1);
+  const [record] = db.notifications;
   assert.equal(record.type, RECOVERY_NOTIFICATION_TYPE);
   assert.equal(record.customerId, 1);
   assert.ok(!JSON.stringify(record).includes(CODE));
@@ -116,7 +116,7 @@ test('the right password and code open a normal admin session, and it is recorde
 
 test('every failure looks the same and starts no session', async () => {
   configure();
-  const { app, prisma } = build();
+  const { app, db } = build();
   const failures = [
     { recoveryCode: 'wrong-code-wrong-code-wrong-code' },
     { recoveryCode: undefined },
@@ -133,21 +133,21 @@ test('every failure looks the same and starts no session', async () => {
     bodies.add(JSON.stringify(response.body.error ?? response.body));
   }
   assert.equal(bodies.size, 1);
-  assert.equal(prisma.notifications.length, 0);
+  assert.equal(db.notifications.length, 0);
 });
 
 test('a customer named in the settings still cannot get in', async () => {
   configure('shopper@zaevi.test');
-  const { app, prisma } = build();
+  const { app, db } = build();
   assert.equal((await attempt(app, { email: 'shopper@zaevi.test' })).status, 401);
-  assert.equal(prisma.notifications.length, 0);
+  assert.equal(db.notifications.length, 0);
 });
 
 test('a code works once, even after a restart', async () => {
   configure();
-  const prisma = fakePrisma();
-  assert.equal((await attempt(build(prisma).app)).status, 200);
-  assert.equal((await attempt(build(prisma).app)).status, 401);
+  const db = fakeDb();
+  assert.equal((await attempt(build(db).app)).status, 200);
+  assert.equal((await attempt(build(db).app)).status, 401);
 });
 
 test('two requests at the same moment cannot both use a code', async () => {
@@ -159,9 +159,9 @@ test('two requests at the same moment cannot both use a code', async () => {
 
 test('no session starts if the use cannot be recorded', async () => {
   configure();
-  const prisma = fakePrisma();
-  prisma.notification.create = async () => { throw new Error('database unavailable'); };
-  const response = await attempt(build(prisma).app);
+  const db = fakeDb();
+  db.notification.create = async () => { throw new Error('database unavailable'); };
+  const response = await attempt(build(db).app);
   assert.equal(response.status, 503);
   assert.ok(!(response.headers['set-cookie'] ?? []).some((c) => c.startsWith('zaevi.session=')));
 });

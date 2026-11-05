@@ -6,13 +6,16 @@
  *
  * Safety properties:
  * - Strictly targets zaevi_test ONLY. Refuses to run against production or dev.
+ * - Run `npm run db:setup` first if the database is new.
  * - Reuses scrypt hash format and verifyPassword from src/models/auth.js.
  * - Upserts demo accounts safely with valid >= 12 character passwords.
  * - Verifies the created accounts and passwords before exiting.
  */
 
 const path = require('node:path');
-const { PrismaClient } = require('@prisma/client');
+require('dotenv/config');
+
+const fromRoot = (...parts) => `file://${path.resolve(__dirname, '..', ...parts).split('\\').join('/')}`;
 
 async function main() {
   // Demo credentials are for development and testing only.
@@ -21,14 +24,14 @@ async function main() {
     process.exit(1);
   }
 
-  const targetUrl = process.env.TEST_DATABASE_URL || 'mysql://root@127.0.0.1:3306/zaevi_test';
-
-  if (!targetUrl.endsWith('zaevi_test')) {
-    console.error(`Safety guard violation: Refusing to run against "${targetUrl}". Only zaevi_test is allowed.`);
+  const { resolveDatabaseName } = await import(fromRoot('src', 'config', 'database.js'));
+  const databaseName = resolveDatabaseName();
+  if (!databaseName.endsWith('zaevi_test')) {
+    console.error(`Safety guard violation: Refusing to run against "${databaseName}". Only zaevi_test is allowed.`);
     process.exit(1);
   }
 
-  console.log(`Database target verified: ${targetUrl}`);
+  console.log(`Database target verified: ${databaseName}`);
 
   const authPath = path.resolve(__dirname, '..', 'src', 'models', 'auth.js');
   const { hashPassword, verifyPassword } = await import(`file://${authPath.split('\\').join('/')}`);
@@ -36,10 +39,8 @@ async function main() {
   const cmsPath = path.resolve(__dirname, '..', 'src', 'models', 'cms.js');
   const { CMS_DEFAULT_SETTINGS } = await import(`file://${cmsPath.split('\\').join('/')}`);
 
-  const prisma = new PrismaClient({
-    datasources: { db: { url: targetUrl } },
-    log: ['error'],
-  });
+  const { getDbClient } = await import(fromRoot('src', 'db', 'connect.js'));
+  const db = getDbClient();
 
   try {
     // Fixed development credentials, deliberately kept here. They must not change, and
@@ -77,7 +78,7 @@ async function main() {
 
     for (const acc of accounts) {
       const passwordHash = await hashPassword(acc.password);
-      const user = await prisma.customer.upsert({
+      const user = await db.customer.upsert({
         where: { email: acc.email },
         update: {
           passwordHash,
@@ -102,9 +103,9 @@ async function main() {
     }
 
     // Ensure WebsiteSetting id: 1 exists
-    const existingSettings = await prisma.websiteSetting.findUnique({ where: { id: 1 } });
+    const existingSettings = await db.websiteSetting.findUnique({ where: { id: 1 } });
     if (!existingSettings) {
-      await prisma.websiteSetting.create({
+      await db.websiteSetting.create({
         data: { id: 1, ...CMS_DEFAULT_SETTINGS },
       });
       console.log('✓ Website settings seeded (ID: 1)');
@@ -114,7 +115,7 @@ async function main() {
 
     console.log('\nAll demo accounts and CMS settings successfully verified in zaevi_test.');
   } finally {
-    await prisma.$disconnect();
+    await db.$disconnect();
   }
 }
 

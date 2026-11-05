@@ -8,12 +8,12 @@ function buildMockApp() {
   const orders = [];
   let seq = 0;
 
-  const prisma = {
+  const db = {
     customer: {
       async create({ data }) {
         if (customers.has(data.email)) {
           const error = new Error('Unique constraint failed on the fields: (`email`)');
-          error.code = 'P2002';
+          error.code = 'DUPLICATE_KEY';
           error.meta = { target: 'Customer_email_key' };
           throw error;
         }
@@ -67,21 +67,21 @@ function buildMockApp() {
   };
 
   const app = createApp({
-    prisma,
+    db,
     logger: { log() {}, error() {} },
     sessionSecret: 'test-secret-32-characters-long-enough',
     authRateLimit: false,
     loginRateLimit: false,
   });
 
-  return { app, prisma, customers, orders };
+  return { app, db, customers, orders };
 }
 
 test('guest account claiming: guest customer claims account, sets password, and preserves ID', async () => {
-  const { prisma, customers } = buildMockApp();
+  const { db, customers } = buildMockApp();
 
   // 1. Simulate guest checkout: Customer row created with passwordHash: null
-  const guestCustomer = await prisma.customer.create({
+  const guestCustomer = await db.customer.create({
     data: {
       email: 'guest@example.com',
       name: 'Guest Shopper',
@@ -97,12 +97,12 @@ test('guest account claiming: guest customer claims account, sets password, and 
   const newPassword = 'SecurePassword123!';
   const hashedPassword = await hashPassword(newPassword);
 
-  const existing = await prisma.customer.findUnique({ where: { email: 'guest@example.com' } });
+  const existing = await db.customer.findUnique({ where: { email: 'guest@example.com' } });
   assert.ok(existing);
   assert.equal(existing.passwordHash, null);
 
   // Claim account atomically
-  const result = await prisma.customer.updateMany({
+  const result = await db.customer.updateMany({
     where: { id: existing.id, passwordHash: null },
     data: {
       passwordHash: hashedPassword,
@@ -112,7 +112,7 @@ test('guest account claiming: guest customer claims account, sets password, and 
   });
   assert.equal(result.count, 1);
 
-  const claimed = await prisma.customer.findUnique({ where: { id: existing.id } });
+  const claimed = await db.customer.findUnique({ where: { id: existing.id } });
   assert.equal(claimed.id, guestCustomer.id, 'Customer ID is preserved');
   assert.equal(claimed.name, 'Registered Shopper');
   assert.equal(claimed.phone, '+91 98200 22222');
@@ -123,11 +123,11 @@ test('guest account claiming: guest customer claims account, sets password, and 
   assert.equal(isValid, true, 'Password hashes and verifies with scrypt');
 
   // 4. Duplicate registration fails (passwordHash is now set)
-  const reCheck = await prisma.customer.findUnique({ where: { email: 'guest@example.com' } });
+  const reCheck = await db.customer.findUnique({ where: { email: 'guest@example.com' } });
   assert.ok(reCheck.passwordHash !== null, 'Account now has password');
 
   // 5. Concurrent claim fails if passwordHash already set
-  const concurrentResult = await prisma.customer.updateMany({
+  const concurrentResult = await db.customer.updateMany({
     where: { id: existing.id, passwordHash: null },
     data: { passwordHash: hashedPassword },
   });

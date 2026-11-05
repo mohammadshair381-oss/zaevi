@@ -12,7 +12,7 @@ import {
 } from '../src/models/product.js';
 
 // Mock/unit tests: these validate catalog data in memory only. They never
-// import Prisma and never touch a database.
+// import database and never touch a database.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PRODUCTS_PATH = path.join(__dirname, '..', 'products.json');

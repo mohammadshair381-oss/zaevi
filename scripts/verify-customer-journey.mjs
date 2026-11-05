@@ -1,17 +1,19 @@
+import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
-import { getPrismaClient } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient } from '../src/db/connect.js';
 
 async function runJourney() {
   console.log('--- Starting Customer Journey Verification on zaevi_test ---');
 
-  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.endsWith('zaevi_test')) {
+  if (!resolveDatabaseName().endsWith('zaevi_test')) {
     throw new Error('Safety guard: journey verification can only run on zaevi_test');
   }
 
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   const app = createApp({
-    prisma,
+    db,
     logger: { log() {}, error() {} },
     sessionSecret: 'e2e-verification-secret-32-characters-minimum',
     authRateLimit: false,
@@ -138,13 +140,13 @@ async function runJourney() {
     console.log('✓ Logout confirmed, session successfully invalidated');
 
     // 7. Cleanup test customer
-    await prisma.customer.deleteMany({ where: { email: testEmail } });
+    await db.customer.deleteMany({ where: { email: testEmail } });
     console.log('\n✓ Test customer cleaned up from zaevi_test');
 
     console.log('\n=== ALL CUSTOMER JOURNEY CHECKS PASSED SUCCESSFULLY ===');
   } finally {
     server.close();
-    await prisma.$disconnect();
+    await db.$disconnect();
   }
 }
 

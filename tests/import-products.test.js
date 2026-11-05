@@ -16,7 +16,7 @@ import {
 } from '../scripts/import-products.js';
 import { normalizeProduct } from '../src/models/product.js';
 
-// Mock tests: an in-memory fake Prisma client exercises the import logic
+// Mock tests: an in-memory fake data client exercises the import logic
 // (mapping, upsert/skip behaviour, duplicate prevention) with no database.
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,11 +29,11 @@ function silentLogger() {
 }
 
 /**
- * Minimal in-memory stand-in for the Prisma Product / ProductSize delegates.
+ * Minimal in-memory stand-in for the database Product / ProductSize delegates.
  * Mirrors the (productId, size) unique constraint so duplicate creation would
  * surface as a duplicate map entry.
  */
-function createFakePrisma() {
+function createFakeDb() {
   const products = new Map();
 
   const fake = {
@@ -160,17 +160,17 @@ test('sizesEqual compares size, order and position', () => {
 });
 
 test('first import creates all 12 products with 49 ordered size rows', async () => {
-  const prisma = createFakePrisma();
-  const summary = await importProducts({ prisma, raw: rawProducts, logger: silentLogger() });
+  const db = createFakeDb();
+  const summary = await importProducts({ db, raw: rawProducts, logger: silentLogger() });
 
   assert.deepEqual(
     { created: summary.created, updated: summary.updated, skipped: summary.skipped, failed: summary.failed },
     { created: 12, updated: 0, skipped: 0, failed: 0 }
   );
-  assert.equal(prisma._products.size, 12);
-  assert.equal(prisma._sizeRowCount(), 49);
+  assert.equal(db._products.size, 12);
+  assert.equal(db._sizeRowCount(), 49);
 
-  for (const record of prisma._products.values()) {
+  for (const record of db._products.values()) {
     const source = rawProducts.find((p) => p.id === record.id);
     assert.deepEqual(
       [...record.sizes.values()].sort((a, b) => a.position - b.position).map((s) => s.size),
@@ -180,50 +180,50 @@ test('first import creates all 12 products with 49 ordered size rows', async () 
 });
 
 test('second import creates no duplicates and skips all 12', async () => {
-  const prisma = createFakePrisma();
-  await importProducts({ prisma, raw: rawProducts, logger: silentLogger() });
-  const summary = await importProducts({ prisma, raw: rawProducts, logger: silentLogger() });
+  const db = createFakeDb();
+  await importProducts({ db, raw: rawProducts, logger: silentLogger() });
+  const summary = await importProducts({ db, raw: rawProducts, logger: silentLogger() });
 
   assert.deepEqual(
     { created: summary.created, updated: summary.updated, skipped: summary.skipped, failed: summary.failed },
     { created: 0, updated: 0, skipped: 12, failed: 0 }
   );
-  assert.equal(prisma._products.size, 12, 'no duplicate products');
-  assert.equal(prisma._sizeRowCount(), 49, 'no duplicate size rows');
+  assert.equal(db._products.size, 12, 'no duplicate products');
+  assert.equal(db._sizeRowCount(), 49, 'no duplicate size rows');
 });
 
 test('a changed product is updated in place, not duplicated', async () => {
-  const prisma = createFakePrisma();
-  await importProducts({ prisma, raw: rawProducts, logger: silentLogger() });
+  const db = createFakeDb();
+  await importProducts({ db, raw: rawProducts, logger: silentLogger() });
 
   const edited = rawProducts.map((p) => (p.id === 'ZV001' ? { ...p, price: 19900, name: 'Aurelia Silk Dress II' } : p));
-  const summary = await importProducts({ prisma, raw: edited, logger: silentLogger() });
+  const summary = await importProducts({ db, raw: edited, logger: silentLogger() });
 
   assert.deepEqual(
     { created: summary.created, updated: summary.updated, skipped: summary.skipped, failed: summary.failed },
     { created: 0, updated: 1, skipped: 11, failed: 0 }
   );
-  assert.equal(prisma._products.size, 12);
-  assert.equal(prisma._products.get('ZV001').price, 19900);
-  assert.equal(prisma._products.get('ZV001').name, 'Aurelia Silk Dress II');
+  assert.equal(db._products.size, 12);
+  assert.equal(db._products.get('ZV001').price, 19900);
+  assert.equal(db._products.get('ZV001').name, 'Aurelia Silk Dress II');
 });
 
 test('invalid entries fail without aborting the run', async () => {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const broken = rawProducts.map((p) => (p.id === 'ZV005' ? { ...p, price: 12.5 } : p));
-  const summary = await importProducts({ prisma, raw: broken, logger: silentLogger() });
+  const summary = await importProducts({ db, raw: broken, logger: silentLogger() });
 
   assert.equal(summary.created, 11);
   assert.equal(summary.failed, 1);
   assert.equal(summary.failures[0].id, 'ZV005');
   assert.match(summary.failures[0].error, /price must be a whole number/);
-  assert.equal(prisma._products.has('ZV005'), false);
+  assert.equal(db._products.has('ZV005'), false);
 });
 
 test('duplicate ids in the source are rejected after the first', async () => {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const summary = await importProducts({
-    prisma,
+    db,
     raw: [rawProducts[0], rawProducts[0]],
     logger: silentLogger(),
   });
@@ -234,10 +234,10 @@ test('duplicate ids in the source are rejected after the first', async () => {
 });
 
 test('importOneProduct returns created then skipped', async () => {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const desired = normalizeProduct(rawProducts[1]);
-  assert.equal(await importOneProduct(prisma, desired), 'created');
-  assert.equal(await importOneProduct(prisma, desired), 'skipped');
+  assert.equal(await importOneProduct(db, desired), 'created');
+  assert.equal(await importOneProduct(db, desired), 'skipped');
 });
 
 test('formatSummary reports every counter', () => {

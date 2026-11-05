@@ -2,7 +2,7 @@
  * CMS validation and component schema.
  *
  * These helpers are intentionally database-free so they can be unit-tested
- * without a generated Prisma client or a live MySQL server. They enforce the
+ * without a live database. They enforce the
  * CMS-1 safety rules: no arbitrary HTML/CSS/JavaScript, no unknown component
  * types, no unknown properties, bounded payload sizes, and safe URLs/colors.
  */

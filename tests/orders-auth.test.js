@@ -38,11 +38,11 @@ const CATALOG = [
 ];
 
 /**
- * Fake Prisma covering the auth and order endpoints: register/login need the
+ * Fake database covering the auth and order endpoints: register/login need the
  * customer model, POST /api/orders needs products, the customer upsert and a
  * transaction that creates the order.
  */
-function createFakePrisma() {
+function createFakeDb() {
   const customers = new Map();
   const orders = [];
   let customerSeq = 0;
@@ -52,7 +52,7 @@ function createFakePrisma() {
     async create({ data }) {
       if (customers.has(data.email)) {
         const error = new Error('Unique constraint failed on the fields: (`email`)');
-        error.code = 'P2002';
+        error.code = 'DUPLICATE_KEY';
         error.meta = { target: 'Customer_email_key' };
         throw error;
       }
@@ -122,9 +122,9 @@ function createFakePrisma() {
 }
 
 function buildApp({ requireAuthForOrders = false } = {}) {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const app = createApp({
-    prisma,
+    db,
     logger: silentLogger,
     sessionSecret: SESSION_SECRET,
     authRateLimit: false,
@@ -132,7 +132,7 @@ function buildApp({ requireAuthForOrders = false } = {}) {
     orderRateLimit: false,
     requireAuthForOrders,
   });
-  return { app, prisma };
+  return { app, db };
 }
 
 function orderBody(overrides = {}) {
@@ -179,23 +179,23 @@ async function login(app) {
 }
 
 test('policy OFF (default): guest checkout still works — no compatibility break', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const res = await request(app).post('/api/orders').set(orderHeaders()).send(orderBody());
   assert.equal(res.status, 201);
   assert.match(res.body.data.reference, /^ZV-\d{8}-[0-9a-f]{16}$/);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('policy ON: guest order is rejected before any database write', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const res = await request(app).post('/api/orders').set(orderHeaders()).send(orderBody());
   assert.equal(res.status, 401);
   assert.equal(res.body.error.message, 'Authentication required');
-  assert.equal(prisma.__orders.length, 0, 'no order row may be created for a guest');
+  assert.equal(db.__orders.length, 0, 'no order row may be created for a guest');
 });
 
 test('policy ON: authenticated order without a CSRF token is rejected', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const session = await login(app);
   const res = await request(app)
     .post('/api/orders')
@@ -203,11 +203,11 @@ test('policy ON: authenticated order without a CSRF token is rejected', async ()
     .set('Cookie', session.cookieHeader)
     .send(orderBody());
   assert.equal(res.status, 403);
-  assert.equal(prisma.__orders.length, 0, 'no order row may be created without a CSRF token');
+  assert.equal(db.__orders.length, 0, 'no order row may be created without a CSRF token');
 });
 
 test('policy ON: authenticated order with a wrong CSRF token is rejected', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const session = await login(app);
   const res = await request(app)
     .post('/api/orders')
@@ -216,11 +216,11 @@ test('policy ON: authenticated order with a wrong CSRF token is rejected', async
     .set('x-csrf-token', 'not-the-session-token')
     .send(orderBody());
   assert.equal(res.status, 403);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('policy ON: signed-in customer places an order with session + CSRF + idempotency key', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const session = await login(app);
   const res = await request(app)
     .post('/api/orders')
@@ -232,7 +232,7 @@ test('policy ON: signed-in customer places an order with session + CSRF + idempo
   assert.equal(res.status, 201);
   assert.match(res.body.data.reference, /^ZV-\d{8}-[0-9a-f]{16}$/);
   assert.equal(res.body.data.totalMinor, 1890000);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 
   // The order is attached to the signed-in customer and appears in their history.
   const history = await request(app)
@@ -244,7 +244,7 @@ test('policy ON: signed-in customer places an order with session + CSRF + idempo
 });
 
 test('policy ON: an expired/invalid session cannot place an order', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const session = await login(app);
   await request(app)
     .post('/api/auth/logout')
@@ -258,11 +258,11 @@ test('policy ON: an expired/invalid session cannot place an order', async () => 
     .set('x-csrf-token', session.csrfToken)
     .send(orderBody());
   assert.equal(res.status, 401, 'the destroyed session must not create orders');
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('policy ON: idempotency still works for authenticated orders', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const session = await login(app);
   const key = 'order-auth-idempotency-12345678901';
   const first = await request(app)
@@ -281,7 +281,7 @@ test('policy ON: idempotency still works for authenticated orders', async () => 
     .send(orderBody());
   assert.equal(replay.status, 200, 'same key + same payload replays the stored order');
   assert.equal(replay.body.data.reference, first.body.data.reference);
-  assert.equal(prisma.__orders.length, 1, 'no duplicate order row');
+  assert.equal(db.__orders.length, 1, 'no duplicate order row');
 
   const conflict = await request(app)
     .post('/api/orders')
@@ -290,5 +290,5 @@ test('policy ON: idempotency still works for authenticated orders', async () => 
     .set('x-csrf-token', session.csrfToken)
     .send(orderBody({ shippingAddress: '99 Other Street' }));
   assert.equal(conflict.status, 409);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });

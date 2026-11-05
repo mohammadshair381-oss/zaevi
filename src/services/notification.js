@@ -6,10 +6,10 @@
  */
 import { sendEmail } from './email.js';
 
-async function deliverNotification(prisma, row) {
+async function deliverNotification(db, row) {
   const result = await sendEmail({ to: row.recipientEmail, subject: row.subject, text: row.content });
-  if (!prisma?.notification?.update) return { ...row, status: result.status };
-  return prisma.notification.update({
+  if (!db?.notification?.update) return { ...row, status: result.status };
+  return db.notification.update({
     where: { id: row.id },
     data: {
       status: result.status,
@@ -19,14 +19,14 @@ async function deliverNotification(prisma, row) {
   });
 }
 
-export async function recordNotification(prisma, { customerId, recipientEmail, type, subject, content }) {
+export async function recordNotification(db, { customerId, recipientEmail, type, subject, content }) {
   if (!recipientEmail) return null;
   try {
-    if (!prisma?.notification?.create) return null;
-    const row = await prisma.notification.create({
+    if (!db?.notification?.create) return null;
+    const row = await db.notification.create({
       data: { customerId: customerId || null, recipientEmail, type, subject, content, status: 'pending' },
     });
-    deliverNotification(prisma, row).catch((error) => {
+    deliverNotification(db, row).catch((error) => {
       console.error(`[notification] Failed to update ${type} delivery status:`, error.message);
     });
     return row;
@@ -37,16 +37,16 @@ export async function recordNotification(prisma, { customerId, recipientEmail, t
 }
 
 /** Attempt delivery again for a stored notification and wait for the outcome. */
-export async function retryNotification(prisma, id) {
-  const row = await prisma.notification.findUnique({ where: { id } });
+export async function retryNotification(db, id) {
+  const row = await db.notification.findUnique({ where: { id } });
   if (!row) return null;
-  return deliverNotification(prisma, row);
+  return deliverNotification(db, row);
 }
 
-export async function notifyOrderConfirmed(prisma, { order }) {
+export async function notifyOrderConfirmed(db, { order }) {
   const subject = `ZAEVI Order Confirmation — ${order.reference}`;
   const content = `Thank you for your order with ZAEVI. Your order reference is ${order.reference}. Total: ₹${(order.totalMinor / 100).toLocaleString('en-IN')}. Each piece is made to order. You can follow its progress on the Track Order page of our website.`;
-  return recordNotification(prisma, {
+  return recordNotification(db, {
     customerId: order.customerId,
     recipientEmail: order.contactEmail,
     type: 'order_confirmation',
@@ -55,10 +55,10 @@ export async function notifyOrderConfirmed(prisma, { order }) {
   });
 }
 
-export async function notifyStatusUpdate(prisma, { order, newStatus, label }) {
+export async function notifyStatusUpdate(db, { order, newStatus, label }) {
   const subject = `ZAEVI Order ${order.reference} Update: ${label || newStatus}`;
   const content = `Your order ${order.reference} has progressed to: ${label || newStatus}. You can follow its progress on the Track Order page of our website.`;
-  return recordNotification(prisma, {
+  return recordNotification(db, {
     customerId: order.customerId,
     recipientEmail: order.contactEmail,
     type: 'status_update',
@@ -67,11 +67,11 @@ export async function notifyStatusUpdate(prisma, { order, newStatus, label }) {
   });
 }
 
-export async function notifyShipmentDispatched(prisma, { order, shipment }) {
+export async function notifyShipmentDispatched(db, { order, shipment }) {
   const subject = `ZAEVI Order ${order.reference} has Dispatched`;
   const trackingInfo = shipment.trackingNumber ? ` Carrier: ${shipment.carrier || 'Express'} · Tracking: ${shipment.trackingNumber}` : '';
   const content = `Your order ${order.reference} is on its way.${trackingInfo}`;
-  return recordNotification(prisma, {
+  return recordNotification(db, {
     customerId: order.customerId,
     recipientEmail: order.contactEmail,
     type: 'shipment_dispatched',
@@ -80,10 +80,10 @@ export async function notifyShipmentDispatched(prisma, { order, shipment }) {
   });
 }
 
-export async function notifyRefundProcessed(prisma, { order, refund }) {
+export async function notifyRefundProcessed(db, { order, refund }) {
   const subject = `ZAEVI Refund Notification — Order ${order.reference}`;
   const content = `A refund of ₹${(refund.amountMinor / 100).toLocaleString('en-IN')} has been processed to your original payment method. Reference: ${refund.providerRefundId || 'N/A'}.`;
-  return recordNotification(prisma, {
+  return recordNotification(db, {
     customerId: order.customerId,
     recipientEmail: order.contactEmail,
     type: 'refund_processed',
@@ -92,9 +92,9 @@ export async function notifyRefundProcessed(prisma, { order, refund }) {
   });
 }
 
-export async function notifyNewsletterWelcome(prisma, { email, offerMessage }) {
+export async function notifyNewsletterWelcome(db, { email, offerMessage }) {
   const content = `Thank you for subscribing to the ZAEVI letter.${offerMessage ? ` ${offerMessage}` : ''} You can unsubscribe at any time from the Unsubscribe page of our website.`;
-  return recordNotification(prisma, {
+  return recordNotification(db, {
     recipientEmail: email,
     type: 'newsletter_welcome',
     subject: 'Welcome to the ZAEVI letter',

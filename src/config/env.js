@@ -40,11 +40,11 @@ function normalize(source) {
     errors.push(`PORT must be an integer between 0 and 65535 (received "${rawPort}")`);
   }
 
-  const rawDbUrl = source.DATABASE_URL;
+  const rawDbUrl = source.MONGODB_URI;
   if (rawDbUrl === undefined || String(rawDbUrl).trim() === '') {
-    errors.push('DATABASE_URL is required but was not set');
-  } else if (!/^mysql:\/\/.+/i.test(String(rawDbUrl).trim())) {
-    errors.push('DATABASE_URL must start with "mysql://"');
+    errors.push('MONGODB_URI is required but was not set');
+  } else if (!/^mongodb(\+srv)?:\/\/.+/i.test(String(rawDbUrl).trim())) {
+    errors.push('MONGODB_URI must start with "mongodb://" or "mongodb+srv://"');
   }
 
   // Optional order-creation rate limit (per client IP). Both values must be
@@ -92,7 +92,7 @@ function normalize(source) {
   return Object.freeze({
     NODE_ENV: nodeEnv,
     PORT: port,
-    DATABASE_URL: String(rawDbUrl).trim(),
+    MONGODB_URI: String(rawDbUrl).trim(),
     ORDER_RATE_LIMIT_MAX: rateMax,
     ORDER_RATE_LIMIT_WINDOW_MS: rateWindow,
     SESSION_SECRET: sessionSecret,

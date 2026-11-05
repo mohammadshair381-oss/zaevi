@@ -4,45 +4,48 @@ import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 
 // Live-database (zaevi_test ONLY) integration tests for the Phase A admin
-// surface. Skipped (never failed) when DATABASE_URL is unset or MySQL is
+// surface. Skipped (never failed) when MONGODB_URI is unset or the database is
 // unreachable, matching the other *.db.test.js files.
 //
-// STRICT TARGET RULE: if DATABASE_URL is set to anything other than
+// STRICT TARGET RULE: if MONGODB_URI is set to anything other than
 // zaevi_test this file REFUSES to run rather than silently touching the
 // live database. Every row it creates is removed in `finally`.
 import 'dotenv/config';
 
 import { createApp, projectRoot } from '../src/app.js';
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
 import { hashPassword } from '../src/models/auth.js';
 
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.endsWith('zaevi_test')) {
-  throw new Error(`admin-api.db.test.js safety guard: refusing to run against "${process.env.DATABASE_URL}"`);
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('admin-api.db.test.js refuses to run against this database');
 }
+
 
 function uniqueSuffix() {
   return randomBytes(6).toString('hex');
 }
 
 async function connectOrSkip(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
-    return prisma;
+    await db.$ping();
+    return db;
   } catch (error) {
     t.diagnostic(`database unavailable: ${error.message}`);
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
 
 test('zaevi_test: admin session sees real, database-derived data; ordinary customer does not', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   const suffix = uniqueSuffix();
   const adminEmail = `zv-admin-${suffix}@zaevi.test`;
@@ -59,7 +62,7 @@ test('zaevi_test: admin session sees real, database-derived data; ordinary custo
   try {
     // Seed directly with the real client (bypasses the register rate limiter;
     // the ordinary customer relies on the schema default role = 'customer').
-    await prisma.customer.create({
+    await db.customer.create({
       data: {
         email: adminEmail,
         name: 'Integration Admin',
@@ -67,7 +70,7 @@ test('zaevi_test: admin session sees real, database-derived data; ordinary custo
         role: 'admin',
       },
     });
-    const cust = await prisma.customer.create({
+    const cust = await db.customer.create({
       data: { email: custEmail, name: 'Integration Customer', passwordHash: await hashPassword(custPassword) },
     });
     assert.equal(cust.role, 'customer', 'schema default role applies to new customers');
@@ -102,10 +105,10 @@ test('zaevi_test: admin session sees real, database-derived data; ordinary custo
 
     // ---- Stats match database-derived expectations computed independently ---
     const [expectedOrders, expectedCustomers, expectedStatus, expectedValue] = await Promise.all([
-      prisma.order.count(),
-      prisma.customer.count(),
-      prisma.order.groupBy({ by: ['status'], _count: { _all: true }, orderBy: { status: 'asc' } }),
-      prisma.order.aggregate({ _sum: { totalMinor: true } }),
+      db.order.count(),
+      db.customer.count(),
+      db.order.groupBy({ by: ['status'], _count: { _all: true }, orderBy: { status: 'asc' } }),
+      db.order.aggregate({ _sum: { totalMinor: true } }),
     ]);
     const stats = await request(app).get('/api/admin/stats').set('Cookie', admin.cookie);
     assert.equal(stats.status, 200);
@@ -147,7 +150,7 @@ test('zaevi_test: admin session sees real, database-derived data; ordinary custo
     assert.ok(Array.isArray(first.sizes), 'sizes included');
     assert.ok(typeof first.price === 'number');
   } finally {
-    await prisma.customer.deleteMany({ where: { email: { in: [adminEmail, custEmail] } } });
+    await db.customer.deleteMany({ where: { email: { in: [adminEmail, custEmail] } } });
     await disconnectDB();
   }
 });

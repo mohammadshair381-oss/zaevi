@@ -4,12 +4,18 @@ import { randomBytes } from 'node:crypto';
 import request from 'supertest';
 
 // Live-database tests for POST /api/orders. Skipped (never failed) when
-// DATABASE_URL is unset or MySQL is unreachable, matching the other *.db.test.js
+// MONGODB_URI is unset or the database is unreachable, matching the other *.db.test.js
 // files. Every row this file creates is removed in `finally`.
 import 'dotenv/config';
 
 import { createApp } from '../src/app.js';
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
+
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('orders.api.db.test.js refuses to run against this database');
+}
 
 const silentLogger = { log() {}, error() {} };
 
@@ -18,17 +24,17 @@ function uniqueSuffix() {
 }
 
 async function connectOrSkip(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
-    return prisma;
+    await db.$ping();
+    return db;
   } catch (error) {
     t.diagnostic(`database unavailable: ${error.message}`);
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
@@ -47,26 +53,26 @@ function validBody(priceEmail, items, overrides = {}) {
   };
 }
 
-async function cleanup(prisma, references, emails) {
+async function cleanup(db, references, emails) {
   if (references.length > 0) {
-    await prisma.order.deleteMany({ where: { reference: { in: references } } });
+    await db.order.deleteMany({ where: { reference: { in: references } } });
   }
   for (const email of emails) {
-    await prisma.customer.deleteMany({ where: { email } });
+    await db.customer.deleteMany({ where: { email } });
   }
 }
 
 test('live database: POST /api/orders persists a guest order with DB-calculated paise', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   const suffix = uniqueSuffix();
   const email = `guest.${suffix}@zaevi.test`;
   const references = [];
-  const app = createApp({ prisma, logger: silentLogger });
+  const app = createApp({ db, logger: silentLogger });
 
   try {
-    const product = await prisma.product.findUnique({ where: { id: 'ZV001' } });
+    const product = await db.product.findUnique({ where: { id: 'ZV001' } });
     assert.ok(product, 'catalog product ZV001 must exist');
 
     const idempotencyKey = `test-${suffix}-${Date.now()}`;
@@ -85,7 +91,7 @@ test('live database: POST /api/orders persists a guest order with DB-calculated 
     assert.equal(res.body.data.subtotalMinor, expectedUnit * 2);
     assert.equal(res.body.data.totalMinor, expectedUnit * 2);
 
-    const stored = await prisma.order.findUnique({ where: { reference }, include: { items: true } });
+    const stored = await db.order.findUnique({ where: { reference }, include: { items: true } });
     assert.ok(stored, 'order must be persisted');
     assert.equal(stored.status, 'pending');
     assert.equal(stored.currency, 'INR');
@@ -99,26 +105,26 @@ test('live database: POST /api/orders persists a guest order with DB-calculated 
     assert.equal(stored.items[0].lineTotalMinor, expectedUnit * 2);
     assert.equal(stored.items[0].productId, 'ZV001');
 
-    const customer = await prisma.customer.findUnique({ where: { email } });
+    const customer = await db.customer.findUnique({ where: { email } });
     assert.ok(customer, 'customer must be linked');
     assert.equal(customer.name, 'Live Test Buyer');
     assert.equal(stored.customerId, customer.id, 'order must link the customer');
   } finally {
-    await cleanup(prisma, references, [email]);
+    await cleanup(db, references, [email]);
     await disconnectDB();
   }
 });
 
 test('live database: client-supplied prices are ignored in favour of DB prices', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   const email = `guest.${uniqueSuffix()}@zaevi.test`;
   const references = [];
-  const app = createApp({ prisma, logger: silentLogger });
+  const app = createApp({ db, logger: silentLogger });
 
   try {
-    const product = await prisma.product.findUnique({ where: { id: 'ZV012' } });
+    const product = await db.product.findUnique({ where: { id: 'ZV012' } });
     const idempotencyKey = `test-${uniqueSuffix()}-${Date.now()}`;
     const res = await request(app)
       .post('/api/orders')
@@ -133,27 +139,27 @@ test('live database: client-supplied prices are ignored in favour of DB prices',
     references.push(res.body.data.reference);
 
     const expectedUnit = product.price * 100;
-    const stored = await prisma.order.findUnique({
+    const stored = await db.order.findUnique({
       where: { reference: res.body.data.reference },
       include: { items: true },
     });
     assert.equal(stored.items[0].unitPriceMinor, expectedUnit);
     assert.equal(stored.totalMinor, expectedUnit);
   } finally {
-    await cleanup(prisma, references, [email]);
+    await cleanup(db, references, [email]);
     await disconnectDB();
   }
 });
 
 test('live database: invalid carts create no order or customer rows', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
-  const app = createApp({ prisma, logger: silentLogger });
+  const app = createApp({ db, logger: silentLogger });
   const before = {
-    orders: await prisma.order.count(),
-    items: await prisma.orderItem.count(),
-    customers: await prisma.customer.count(),
+    orders: await db.order.count(),
+    items: await db.orderItem.count(),
+    customers: await db.customer.count(),
   };
 
   try {
@@ -175,21 +181,21 @@ test('live database: invalid carts create no order or customer rows', async (t) 
       assert.equal(res.status, 400);
     }
 
-    assert.equal(await prisma.order.count(), before.orders);
-    assert.equal(await prisma.orderItem.count(), before.items);
-    assert.equal(await prisma.customer.count(), before.customers);
+    assert.equal(await db.order.count(), before.orders);
+    assert.equal(await db.orderItem.count(), before.items);
+    assert.equal(await db.customer.count(), before.customers);
   } finally {
     await disconnectDB();
   }
 });
 
 test('live database: order references are unique across requests', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   const email = `guest.${uniqueSuffix()}@zaevi.test`;
   const references = [];
-  const app = createApp({ prisma, logger: silentLogger });
+  const app = createApp({ db, logger: silentLogger });
 
   try {
     for (let i = 0; i < 5; i += 1) {
@@ -203,17 +209,17 @@ test('live database: order references are unique across requests', async (t) => 
     }
     assert.equal(new Set(references).size, references.length, 'references must be unique');
   } finally {
-    await cleanup(prisma, references, [email]);
+    await cleanup(db, references, [email]);
     await disconnectDB();
   }
 });
 
 test('live database: catalog parity is unchanged (12 products, 49 sizes)', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
   try {
-    assert.equal(await prisma.product.count(), 12);
-    assert.equal(await prisma.productSize.count(), 49);
+    assert.equal(await db.product.count(), 12);
+    assert.equal(await db.productSize.count(), 49);
   } finally {
     await disconnectDB();
   }

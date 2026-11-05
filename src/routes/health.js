@@ -9,7 +9,7 @@ const router = Router();
  * Reports service liveness and database readiness. The service is only
  * considered healthy when a live database probe succeeds; otherwise a 503 is
  * returned so an unavailable database cannot appear healthy. The probe is
- * time-boxed so the endpoint stays responsive when MySQL is unreachable.
+ * time-boxed so the endpoint stays responsive when the database is unreachable.
  */
 router.get('/health', async (req, res) => {
   const database = await checkDatabaseHealth();

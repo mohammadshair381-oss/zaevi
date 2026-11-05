@@ -7,7 +7,7 @@ import { CMS_DEFAULT_HOMEPAGE_STATE, CMS_DEFAULT_SETTINGS, validateHomepageState
 
 const SESSION_SECRET = 'cms-test-session-secret-32-characters';
 
-function buildPrisma() {
+function buildDb() {
   const customers = new Map();
   let customerSeq = 0;
   const settings = {
@@ -71,13 +71,13 @@ function buildPrisma() {
     return result;
   }
 
-  const prisma = {
+  const db = {
     __customers: customers,
     customer: {
       async create({ data }) {
         if (customers.has(data.email)) {
           const error = new Error('Unique constraint failed');
-          error.code = 'P2002';
+          error.code = 'DUPLICATE_KEY';
           error.meta = { target: 'Customer_email_key' };
           throw error;
         }
@@ -215,17 +215,17 @@ function buildPrisma() {
         const index = mediaAssets.findIndex((item) => item.id === where?.id);
         if (index < 0) {
           const error = new Error('Not found');
-          error.code = 'P2025';
+          error.code = 'RECORD_NOT_FOUND';
           throw error;
         }
         const [deleted] = mediaAssets.splice(index, 1);
         return { ...deleted };
       },
     },
-    $transaction: async (callback) => callback(prisma),
+    $transaction: async (callback) => callback(db),
   };
 
-  return prisma;
+  return db;
 }
 
 function readCsrfToken(cookies) {
@@ -234,15 +234,15 @@ function readCsrfToken(cookies) {
 }
 
 test('CMS routes require admin authorization', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
   const res = await request(app).get('/api/admin/cms/settings');
   assert.equal(res.status, 404);
 });
 
 test('CMS admin can read and update global settings', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   const register = await agent.post('/api/auth/register').send({
@@ -250,7 +250,7 @@ test('CMS admin can read and update global settings', async () => {
     password: 'CmsAdminPass123!',
   });
   assert.equal(register.status, 201);
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-admin@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-admin@zaevi.test');
   customer.role = 'admin';
 
   const login = await agent.post('/api/auth/login').send({
@@ -274,12 +274,12 @@ test('CMS admin can read and update global settings', async () => {
 });
 
 test('CMS settings update rejects invalid values and missing CSRF', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-admin2@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-admin2@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-admin2@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-admin2@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -297,12 +297,12 @@ test('CMS settings update rejects invalid values and missing CSRF', async () => 
 });
 
 test('CMS page lifecycle creates drafts, publishes, reverts, and restores revisions', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-page@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-page@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-page@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-page@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -355,11 +355,11 @@ test('CMS page lifecycle creates drafts, publishes, reverts, and restores revisi
 });
 
 test('homepage draft GET and PUT preserve the validated state without publishing', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-home-draft@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-home-draft@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-home-draft@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-home-draft@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -444,8 +444,8 @@ test('homepage draft GET and PUT preserve the validated state without publishing
 });
 
 test('public CMS settings return only safe published settings', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const withSettings = await request(app).get('/api/cms/settings/public');
   assert.equal(withSettings.status, 200);
@@ -456,19 +456,19 @@ test('public CMS settings return only safe published settings', async () => {
   assert.equal(viaAlias.status, 200);
   assert.equal(viaAlias.body.data.siteName, CMS_DEFAULT_SETTINGS.siteName);
 
-  prisma.websiteSetting.findUnique = async () => null;
+  db.websiteSetting.findUnique = async () => null;
   const defaults = await request(app).get('/api/cms/settings/public');
   assert.equal(defaults.status, 200);
   assert.equal(defaults.body.data.siteName, CMS_DEFAULT_SETTINGS.siteName);
 });
 
 test('public CMS page endpoint returns only published revisions', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-public@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-public@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-public@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-public@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -498,19 +498,19 @@ test('public CMS page endpoint returns only published revisions', async () => {
 const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2XQAAAAASUVORK5CYII=';
 
 test('media upload requires admin authorization', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
   const res = await request(app).post('/api/admin/cms/media').send({ data: TINY_PNG_BASE64 });
   assert.equal(res.status, 404);
 });
 
 test('admin can upload and list a validated image', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-media@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-media@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-media@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-media@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -531,12 +531,12 @@ test('admin can upload and list a validated image', async () => {
 });
 
 test('media upload rejects invalid MIME and oversized files', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-media2@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-media2@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-media2@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-media2@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -557,12 +557,12 @@ test('media upload rejects invalid MIME and oversized files', async () => {
 });
 
 test('media deletion is blocked when referenced by CMS content', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-media3@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-media3@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-media3@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-media3@zaevi.test', password: 'CmsAdminPass123!' });
 
@@ -587,12 +587,12 @@ test('media deletion is blocked when referenced by CMS content', async () => {
 });
 
 test('CMS page creation rejects invalid slugs and snapshots', async () => {
-  const prisma = buildPrisma();
-  const app = createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
+  const db = buildDb();
+  const app = createApp({ db, logger: { log() {}, error() {} }, sessionSecret: SESSION_SECRET });
 
   const agent = request.agent(app);
   await agent.post('/api/auth/register').send({ email: 'cms-invalid@zaevi.test', password: 'CmsAdminPass123!' });
-  const customer = [...prisma.__customers.values()].find((row) => row.email === 'cms-invalid@zaevi.test');
+  const customer = [...db.__customers.values()].find((row) => row.email === 'cms-invalid@zaevi.test');
   customer.role = 'admin';
   await agent.post('/api/auth/login').send({ email: 'cms-invalid@zaevi.test', password: 'CmsAdminPass123!' });
 

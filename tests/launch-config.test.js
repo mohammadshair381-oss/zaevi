@@ -4,71 +4,55 @@ import { existsSync, readFileSync } from 'node:fs';
 import request from 'supertest';
 
 import { createApp } from '../src/app.js';
-import { applyDatabaseUrlToEnv, databaseNameOf, resolveDatabaseUrl } from '../src/config/database.js';
+import { databaseNameOf, resolveDatabase, resolveDatabaseName } from '../src/config/database.js';
 import { getOfficialContactEmail, deliverContactNotification } from '../src/routes/contact.js';
 import { getInvoiceGstinLabel } from '../src/routes/payments.js';
 import { CMS_DEFAULT_SETTINGS } from '../src/models/cms.js';
 
-const PROD = 'mysql://user:pw@db.example:3306/zaevi';
+const PROD = 'mongodb://user:pw@db.example:27017/zaevi';
+const ATLAS_NO_NAME = 'mongodb+srv://user:pw@cluster.example.mongodb.net/?retryWrites=true';
 const silentLogger = { error() {}, warn() {}, info() {}, log() {} };
 
 test('development and test always use zaevi_test, whatever .env says', () => {
   for (const NODE_ENV of ['development', 'test', undefined]) {
-    assert.equal(databaseNameOf(resolveDatabaseUrl({ NODE_ENV, DATABASE_URL: PROD })), 'zaevi_test');
-    assert.equal(databaseNameOf(resolveDatabaseUrl({ NODE_ENV })), 'zaevi_test');
+    assert.equal(resolveDatabase({ NODE_ENV, MONGODB_URI: PROD }).dbName, 'zaevi_test');
+    assert.equal(resolveDatabase({ NODE_ENV, MONGODB_URI: ATLAS_NO_NAME }).dbName, 'zaevi_test');
+    assert.equal(resolveDatabaseName({ NODE_ENV }), 'zaevi_test');
   }
-  assert.equal(resolveDatabaseUrl({ DATABASE_URL: `${PROD}?connection_limit=5` }), 'mysql://user:pw@db.example:3306/zaevi_test?connection_limit=5');
 });
 
 test('development never switches to production, even with the approval flag', () => {
-  const url = resolveDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: PROD, ZAEVI_PRODUCTION_DB_APPROVED: 'true' });
-  assert.equal(databaseNameOf(url), 'zaevi_test');
+  assert.equal(resolveDatabase({ NODE_ENV: 'development', MONGODB_URI: PROD, ZAEVI_PRODUCTION_DB_APPROVED: 'true' }).dbName, 'zaevi_test');
 });
 
-test('a password containing the database name is not rewritten', () => {
-  const url = resolveDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: 'mysql://user:zaevi@localhost:3306/zaevi' });
-  assert.equal(url, 'mysql://user:zaevi@localhost:3306/zaevi_test');
+test('a password containing the database name is not mistaken for it', () => {
+  assert.equal(databaseNameOf('mongodb://user:zaevi@localhost:27017/zaevi_test'), 'zaevi_test');
+  assert.equal(databaseNameOf('mongodb+srv://user:zaevi@cluster.example.mongodb.net/?retryWrites=true'), null);
 });
 
 test('other development database names are respected', () => {
-  const url = 'mysql://root@127.0.0.1:3306/zaevi_copy';
-  assert.equal(resolveDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: url }), url);
+  assert.equal(resolveDatabase({ NODE_ENV: 'development', MONGODB_URI: 'mongodb://localhost:27017/zaevi_copy' }).dbName, 'zaevi_copy');
+});
+
+test('a link is required', () => {
+  assert.throws(() => resolveDatabase({ NODE_ENV: 'development' }), /MONGODB_URI is required/);
+  assert.throws(() => resolveDatabase({ NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true' }), /MONGODB_URI is required/);
 });
 
 test('production refuses to start without explicit approval', () => {
-  assert.throws(() => resolveDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: PROD }), /not approved/);
-  assert.throws(() => resolveDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: PROD, ZAEVI_PRODUCTION_DB_APPROVED: 'yes' }), /not approved/);
+  assert.throws(() => resolveDatabase({ NODE_ENV: 'production', MONGODB_URI: PROD }), /not approved/);
+  assert.throws(() => resolveDatabase({ NODE_ENV: 'production', MONGODB_URI: PROD, ZAEVI_PRODUCTION_DB_APPROVED: 'yes' }), /not approved/);
 });
 
 test('production never falls back to test data', () => {
   const approved = { NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true' };
-  assert.throws(() => resolveDatabaseUrl(approved), /must name the "zaevi"/);
-  assert.throws(() => resolveDatabaseUrl({ ...approved, DATABASE_URL: 'mysql://root@localhost/zaevi_test' }), /must name the "zaevi"/);
-  assert.throws(() => resolveDatabaseUrl({ ...approved, TEST_DATABASE_URL: PROD.replace('/zaevi', '/zaevi_test') }), /must name the "zaevi"/);
+  assert.throws(() => resolveDatabase({ ...approved, MONGODB_URI: 'mongodb://localhost/zaevi_test' }), /must name the "zaevi"/);
 });
 
 test('production uses zaevi once it is explicitly approved', () => {
-  assert.equal(resolveDatabaseUrl({ NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true', DATABASE_URL: PROD }), PROD);
-});
-
-test('Prisma CLI follows the same rules', () => {
-  const dev = { NODE_ENV: 'development', DATABASE_URL: PROD };
-  applyDatabaseUrlToEnv(dev);
-  assert.equal(databaseNameOf(dev.DATABASE_URL), 'zaevi_test');
-
-  const unapproved = { NODE_ENV: 'production', DATABASE_URL: PROD };
-  applyDatabaseUrlToEnv(unapproved);
-  assert.equal(unapproved.DATABASE_URL, undefined);
-});
-
-test('CMS settings migration matches the application defaults and overwrites nothing', () => {
-  const sql = readFileSync(new URL('../prisma/migrations/20261104120000_seed_default_website_settings/migration.sql', import.meta.url), 'utf8');
-  assert.match(sql, /INSERT IGNORE INTO `WebsiteSetting`/);
-  assert.doesNotMatch(sql, /\b(UPDATE|DELETE|DROP|TRUNCATE)\b/);
-  for (const [key, value] of Object.entries(CMS_DEFAULT_SETTINGS)) {
-    assert.match(sql, new RegExp(`\`${key}\``), `missing column ${key}`);
-    if (typeof value === 'string' && value) assert.ok(sql.includes(`'${value}'`), `value for ${key}`);
-  }
+  const approved = { NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true' };
+  assert.equal(resolveDatabase({ ...approved, MONGODB_URI: PROD }).dbName, 'zaevi');
+  assert.equal(resolveDatabase({ ...approved, MONGODB_URI: ATLAS_NO_NAME }).dbName, 'zaevi');
 });
 
 test('GSTIN: only a valid configured number is printed, otherwise a clear placeholder', () => {
@@ -86,7 +70,7 @@ test('official contact address is configurable and never invented', async () => 
   const before = process.env.CONTACT_EMAIL;
   delete process.env.CONTACT_EMAIL;
   try {
-    const app = createApp({ prisma: {}, logger: silentLogger, sessionSecret: 'test-session-secret-at-least-32-characters' });
+    const app = createApp({ db: {}, logger: silentLogger, sessionSecret: 'test-session-secret-at-least-32-characters' });
     assert.deepEqual((await request(app).get('/api/contact/config')).body, { data: { email: null } });
     process.env.CONTACT_EMAIL = 'help@example.com';
     assert.deepEqual((await request(app).get('/api/contact/config')).body, { data: { email: 'help@example.com' } });
@@ -98,8 +82,8 @@ test('official contact address is configurable and never invented', async () => 
 
 test('contact alerts go to the official address when no separate one is set', async () => {
   const updates = [];
-  const prisma = { contactMessage: { update: async ({ data }) => { updates.push(data); return data; } } };
-  await deliverContactNotification(prisma, { id: 1, email: 'a@example.com', name: 'A', subject: 'Press', message: 'Hello there' }, { env: { CONTACT_EMAIL: 'help@example.com' } });
+  const db = { contactMessage: { update: async ({ data }) => { updates.push(data); return data; } } };
+  await deliverContactNotification(db, { id: 1, email: 'a@example.com', name: 'A', subject: 'Press', message: 'Hello there' }, { env: { CONTACT_EMAIL: 'help@example.com' } });
   assert.equal(updates[0].notifyStatus, 'not_configured');
   assert.match(updates[0].notifyError, /SMTP_HOST/);
 });

@@ -9,7 +9,7 @@ function buildApp() {
   let customerSeq = 0;
   let orderSeq = 0;
 
-  const prisma = {
+  const db = {
     customer: {
       async findUnique({ where }) {
         if (where?.email) {
@@ -46,7 +46,7 @@ function buildApp() {
     async $transaction(fn) { return fn(this); },
   };
 
-  return createApp({ prisma, logger: { log() {}, error() {} }, sessionSecret: 'test-secret-32-characters-long-enough' });
+  return createApp({ db, logger: { log() {}, error() {} }, sessionSecret: 'test-secret-32-characters-long-enough' });
 }
 
 async function registerAndLogin(app, email, password = 'securepassword123') {
@@ -56,9 +56,9 @@ async function registerAndLogin(app, email, password = 'securepassword123') {
   return agent;
 }
 
-function createOrder(prisma, customerId, overrides = {}) {
+function createOrder(db, customerId, overrides = {}) {
   const order = {
-    id: ++prisma.__orderSeq || 1,
+    id: ++db.__orderSeq || 1,
     reference: `ZV-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     customerId,
     status: 'pending',
@@ -79,9 +79,9 @@ function createOrder(prisma, customerId, overrides = {}) {
     ],
     ...overrides,
   };
-  if (!prisma.__orderSeq) prisma.__orderSeq = 0;
-  prisma.__orderSeq++;
-  order.id = prisma.__orderSeq;
+  if (!db.__orderSeq) db.__orderSeq = 0;
+  db.__orderSeq++;
+  order.id = db.__orderSeq;
   return order;
 }
 

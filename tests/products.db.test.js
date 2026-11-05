@@ -1,40 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-// Live database test: exercises the product API against the real MySQL/MariaDB
+// Live database test: exercises the product API against the real MongoDB database.
 // catalog imported from products.json. It is skipped (never failed) when
-// DATABASE_URL is unset or the server is unreachable, so `npm test` still
+// MONGODB_URI is unset or the server is unreachable, so `npm test` still
 // passes without a database.
 import 'dotenv/config';
 
 import request from 'supertest';
 
 import { createApp } from '../src/app.js';
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
+
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('products.db.test.js refuses to run against this database');
+}
 
 const silentLogger = { log() {}, error() {} };
 
 async function connectOrSkip(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
-    return prisma;
+    await db.$ping();
+    return db;
   } catch (error) {
     t.diagnostic(`database unavailable: ${error.message}`);
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
 
 test('live database: product API serves the imported catalog', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
-  const app = createApp({ prisma, logger: silentLogger });
+  const app = createApp({ db, logger: silentLogger });
 
   try {
     await t.test('GET /api/products returns all 12 imported products', async () => {

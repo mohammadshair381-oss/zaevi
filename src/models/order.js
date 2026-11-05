@@ -39,7 +39,7 @@ export const IDEMPOTENCY_KEY_MAX_LENGTH = 64;
 export const IDEMPOTENCY_KEY_MIN_LENGTH = 16;
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_-]+$/;
 
-/** Defaults defined by the Prisma schema; kept here for the response shape. */
+/** Defaults defined by the database schema; kept here for the response shape. */
 export const ORDER_STATUS = 'pending';
 export const ORDER_CURRENCY = 'INR';
 

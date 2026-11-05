@@ -22,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { createRequireAdmin } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -168,12 +168,12 @@ export function serializeAdminOrder(order) {
 }
 
 /** Dashboard statistics derived entirely from persisted rows; no projections. */
-export async function buildAdminStats(prisma) {
+export async function buildAdminStats(db) {
   const [orderTotal, customerTotal, statusRows, valueRows] = await Promise.all([
-    prisma.order.count(),
-    prisma.customer.count(),
-    prisma.order.groupBy({ by: ['status'], _count: { _all: true }, orderBy: { status: 'asc' } }),
-    prisma.order.aggregate({ _sum: { totalMinor: true } }),
+    db.order.count(),
+    db.customer.count(),
+    db.order.groupBy({ by: ['status'], _count: { _all: true }, orderBy: { status: 'asc' } }),
+    db.order.aggregate({ _sum: { totalMinor: true } }),
   ]);
   return {
     orders: {
@@ -197,9 +197,9 @@ export function serializeAdminProduct(row) {
   return serializeProduct(row);
 }
 
-export function createAdminRouter({ getPrisma, root } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
-  const requireAdmin = createRequireAdmin({ getPrisma: resolvePrisma });
+export function createAdminRouter({ getDb, root } = {}) {
+  const resolveDb = getDb ?? getDbClient;
+  const requireAdmin = createRequireAdmin({ getDb: resolveDb });
   const router = Router();
 
   // ---- Protected page -------------------------------------------------------
@@ -232,8 +232,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
 
   api.get('/stats', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const stats = await buildAdminStats(prisma);
+      const db = resolveDb();
+      const stats = await buildAdminStats(db);
       return res.status(200).json({ data: stats });
     } catch (error) {
       return next(error);
@@ -244,10 +244,10 @@ export function createAdminRouter({ getPrisma, root } = {}) {
     try {
       const { page, limit } = parsePagination(req.query);
       const status = parseStatusFilter(req.query.status);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const where = status ? { status } : {};
-      const total = await prisma.order.count({ where });
-      const rows = await prisma.order.findMany({
+      const total = await db.order.count({ where });
+      const rows = await db.order.findMany({
         where,
         include: { items: true, customer: ADMIN_CUSTOMER_SELECT },
         orderBy: { createdAt: 'desc' },
@@ -269,8 +269,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
       if (reference === '' || reference.length > MAX_REFERENCE_LENGTH) {
         throw new HttpError(404, 'Order not found');
       }
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findUnique({
+      const db = resolveDb();
+      const order = await db.order.findUnique({
         where: { reference },
         include: { items: true, customer: ADMIN_CUSTOMER_SELECT },
       });
@@ -295,9 +295,9 @@ export function createAdminRouter({ getPrisma, root } = {}) {
         throw new HttpError(404, 'Order not found');
       }
       const { status: nextStatus } = parseOrderStatusUpdateBody(req.body);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
-      const current = await prisma.order.findUnique({
+      const current = await db.order.findUnique({
         where: { reference },
         select: { status: true },
       });
@@ -307,7 +307,7 @@ export function createAdminRouter({ getPrisma, root } = {}) {
       assertOrderStatusTransition(current.status, nextStatus);
 
       if (current.status !== nextStatus) {
-        const runTx = typeof prisma.$transaction === 'function' ? prisma.$transaction.bind(prisma) : async (fn) => fn(prisma);
+        const runTx = typeof db.$transaction === 'function' ? db.$transaction.bind(db) : async (fn) => fn(db);
         await runTx(async (tx) => {
           const result = await tx.order.updateMany({
             where: { reference, status: current.status },
@@ -333,7 +333,7 @@ export function createAdminRouter({ getPrisma, root } = {}) {
         });
       }
 
-      const updated = await prisma.order.findUnique({
+      const updated = await db.order.findUnique({
         where: { reference },
         include: { items: true, customer: ADMIN_CUSTOMER_SELECT },
       });
@@ -341,7 +341,7 @@ export function createAdminRouter({ getPrisma, root } = {}) {
         throw new HttpError(404, 'Order not found');
       }
       if (current.status !== nextStatus && req.body?.visibility !== 'internal') {
-        await notifyStatusUpdate(prisma, { order: updated, newStatus: nextStatus, label: getOrderStatusLabel(nextStatus) });
+        await notifyStatusUpdate(db, { order: updated, newStatus: nextStatus, label: getOrderStatusLabel(nextStatus) });
       }
       return res.status(200).json({ data: serializeAdminOrder(updated) });
     } catch (error) {
@@ -352,9 +352,9 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.get('/products', async (req, res, next) => {
     try {
       const { page, limit } = parsePagination(req.query);
-      const prisma = resolvePrisma();
-      const total = await prisma.product.count();
-      const rows = await prisma.product.findMany({
+      const db = resolveDb();
+      const total = await db.product.count();
+      const rows = await db.product.findMany({
         include: { sizes: { orderBy: { position: 'asc' } } },
         orderBy: { id: 'asc' },
         skip: (page - 1) * limit,
@@ -374,21 +374,21 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.post('/products', async (req, res, next) => {
     try {
       const { data, sizes } = parseProductInput(req.body);
-      const prisma = resolvePrisma();
-      const existing = await prisma.product.findMany({ select: { id: true } });
+      const db = resolveDb();
+      const existing = await db.product.findMany({ select: { id: true } });
       const highest = existing.reduce((max, row) => {
         const match = /^ZV(\d+)$/.exec(row.id);
         return match ? Math.max(max, Number(match[1])) : max;
       }, 0);
       const id = `ZV${String(highest + 1).padStart(3, '0')}`;
-      const row = await prisma.product.create({
+      const row = await db.product.create({
         data: { id, ...data, sizes: { create: sizes.map((size, position) => ({ size, position })) } },
         include: { sizes: { orderBy: { position: 'asc' } } },
       });
       res.status(201).json({ data: serializeAdminProduct(row) });
     } catch (e) {
       // Two products saved at the same moment would pick the same new ID. Neither is overwritten.
-      if (e.code === 'P2002') return next(new HttpError(409, 'Another product was added at the same moment. Please save again.'));
+      if (e.code === 'DUPLICATE_KEY') return next(new HttpError(409, 'Another product was added at the same moment. Please save again.'));
       next(e);
     }
   });
@@ -397,14 +397,14 @@ export function createAdminRouter({ getPrisma, root } = {}) {
     try {
       const id = String(req.params.id || '').trim();
       const { data, sizes } = parseProductInput(req.body, { partial: true });
-      const prisma = resolvePrisma();
-      const current = await prisma.product.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
+      const db = resolveDb();
+      const current = await db.product.findUnique({ where: { id }, select: { id: true, imageUrl: true } });
       if (!current) throw new HttpError(404, 'Product not found');
       // Clearing the second photo means the main photo is also shown on hover.
       if (req.body?.hoverImageUrl !== undefined && String(req.body.hoverImageUrl ?? '').trim() === '') {
         data.hoverImageUrl = data.imageUrl ?? current.imageUrl;
       }
-      const row = await prisma.$transaction(async (tx) => {
+      const row = await db.$transaction(async (tx) => {
         if (sizes) {
           // Sizes that stay keep their row, so anything else stored on them is preserved.
           const stored = await tx.productSize.findMany({ where: { productId: id }, select: { id: true, size: true } });
@@ -436,40 +436,40 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   // What needs a person's attention, for the dashboard.
   api.get('/attention', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const [newOrders, cancellations, returns, replacements, messages, reviews, failedEmails] = await Promise.all([
-        prisma.order.count({ where: { status: 'pending' } }),
-        prisma.cancellationRequest.count({ where: { status: 'pending' } }),
-        prisma.returnRequest.count({ where: { status: 'pending' } }),
-        prisma.replacementRequest.count({ where: { status: 'pending' } }),
-        prisma.contactMessage.count({ where: { status: 'new' } }),
-        prisma.review.count({ where: { status: 'pending' } }),
-        prisma.notification.count({ where: { status: 'failed' } }),
+        db.order.count({ where: { status: 'pending' } }),
+        db.cancellationRequest.count({ where: { status: 'pending' } }),
+        db.returnRequest.count({ where: { status: 'pending' } }),
+        db.replacementRequest.count({ where: { status: 'pending' } }),
+        db.contactMessage.count({ where: { status: 'new' } }),
+        db.review.count({ where: { status: 'pending' } }),
+        db.notification.count({ where: { status: 'failed' } }),
       ]);
       res.json({ data: { newOrders, cancellations, returns, replacements, messages, reviews, failedEmails } });
     } catch (e) { next(e); }
   });
 
-  addSiteStudioAdminRoutes(api, resolvePrisma);
+  addSiteStudioAdminRoutes(api, resolveDb);
 
   // Lifecycle management endpoints
   api.get('/delivery-config', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const cfg = await prisma.deliveryEstimateConfig.findUnique({ where: { id: 1 } });
+      const db = resolveDb();
+      const cfg = await db.deliveryEstimateConfig.findUnique({ where: { id: 1 } });
       res.json({ data: cfg || { id: 1, productionDays: 7, qualityCheckDays: 2, packingDays: 2, shippingDays: 5, bufferDays: 2 } });
     } catch (e) { next(e); }
   });
   api.patch('/delivery-config', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const data = {};
       for (const k of ['productionDays','qualityCheckDays','packingDays','shippingDays','bufferDays']) {
         if (b[k] !== undefined) data[k] = Number(b[k]);
       }
       data.updatedBy = req.customerId || null;
-      const cfg = await prisma.deliveryEstimateConfig.upsert({
+      const cfg = await db.deliveryEstimateConfig.upsert({
         where: { id: 1 },
         create: { id: 1, ...data },
         update: data,
@@ -481,10 +481,10 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.get('/orders/:reference/history', async (req, res, next) => {
     try {
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findUnique({ where: { reference }, select: { id: true } });
+      const db = resolveDb();
+      const order = await db.order.findUnique({ where: { reference }, select: { id: true } });
       if (!order) throw new HttpError(404, 'Order not found');
-      const history = await prisma.orderStatusHistory.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'asc' } });
+      const history = await db.orderStatusHistory.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'asc' } });
       res.json({ data: history });
     } catch (e) { next(e); }
   });
@@ -492,8 +492,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.post('/orders/:reference/shipment', async (req, res, next) => {
     try {
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findUnique({ where: { reference } });
+      const db = resolveDb();
+      const order = await db.order.findUnique({ where: { reference } });
       if (!order) throw new HttpError(404, 'Order not found');
       const b = req.body || {};
       const data = {
@@ -509,8 +509,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
       // link to request if provided
       if (b.replacementRequestId) data.replacementRequest = { connect: { id: Number(b.replacementRequestId) } };
       if (b.returnRequestId) data.returnRequest = { connect: { id: Number(b.returnRequestId) } };
-      const shipment = await prisma.shipment.create({ data });
-      if (data.type === 'outbound') await notifyShipmentDispatched(prisma, { order, shipment });
+      const shipment = await db.shipment.create({ data });
+      if (data.type === 'outbound') await notifyShipmentDispatched(db, { order, shipment });
       res.status(201).json({ data: shipment });
     } catch (e) { next(e); }
   });
@@ -518,40 +518,40 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.patch('/orders/:reference/estimate', async (req, res, next) => {
     try {
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const data = {};
       if (b.estimatedProductionCompleteAt) data.estimatedProductionCompleteAt = new Date(b.estimatedProductionCompleteAt);
       if (b.estimatedDispatchAt) data.estimatedDispatchAt = new Date(b.estimatedDispatchAt);
-      const order = await prisma.order.update({ where: { reference }, data });
+      const order = await db.order.update({ where: { reference }, data });
       res.json({ data: order });
     } catch (e) { next(e); }
   });
 
   api.get('/cancellation-requests', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const rows = await prisma.cancellationRequest.findMany({ include: { order: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
+      const db = resolveDb();
+      const rows = await db.cancellationRequest.findMany({ include: { order: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
       res.json({ data: rows });
     } catch (e) { next(e); }
   });
   api.patch('/cancellation-requests/:id', async (req, res, next) => {
     try {
       const id = Number(req.params.id);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const status = b.status;
-      const cr = await prisma.cancellationRequest.findUnique({ where: { id }, include: { order: true } });
+      const cr = await db.cancellationRequest.findUnique({ where: { id }, include: { order: true } });
       if (!cr) throw new HttpError(404, 'Not found');
       if (status === 'approved') {
-        await prisma.$transaction(async (tx) => {
+        await db.$transaction(async (tx) => {
           const r = await tx.order.updateMany({ where: { id: cr.orderId, status: cr.order.status }, data: { status: 'cancelled' } });
           if (r.count !== 1) throw new HttpError(409, 'Concurrent change');
           if (typeof tx.orderStatusHistory?.create === "function") await tx.orderStatusHistory.create({ data: { orderId: cr.orderId, previousStatus: cr.order.status, newStatus: 'cancelled', note: b.note || cr.reason, visibility: b.visibility === 'internal' ? 'internal' : 'customer', changedBy: req.customerId || null } });
           await tx.cancellationRequest.update({ where: { id }, data: { status: 'approved', decidedBy: req.customerId || null, deciderEmail: null, decidedAt: new Date() } });
         });
       } else {
-        await prisma.cancellationRequest.update({ where: { id }, data: { status: status || 'rejected', decidedBy: req.customerId || null, decidedAt: new Date() } });
+        await db.cancellationRequest.update({ where: { id }, data: { status: status || 'rejected', decidedBy: req.customerId || null, decidedAt: new Date() } });
       }
       res.json({ data: { ok: true } });
     } catch (e) { next(e); }
@@ -559,41 +559,41 @@ export function createAdminRouter({ getPrisma, root } = {}) {
 
   api.get('/return-requests', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const rows = await prisma.returnRequest.findMany({ include: { order: true, items: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
+      const db = resolveDb();
+      const rows = await db.returnRequest.findMany({ include: { order: true, items: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
       res.json({ data: rows });
     } catch (e) { next(e); }
   });
   api.patch('/return-requests/:id', async (req, res, next) => {
     try {
       const id = Number(req.params.id);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const status = b.status;
       const data = { status: status || undefined, decidedBy: req.customerId || null, decidedAt: new Date() };
       if (b.receivedAt) data.receivedAt = new Date(b.receivedAt);
       if (b.refundStatus) data.refundStatus = b.refundStatus;
-      await prisma.returnRequest.update({ where: { id }, data });
+      await db.returnRequest.update({ where: { id }, data });
       res.json({ data: { ok: true } });
     } catch (e) { next(e); }
   });
 
   api.get('/replacement-requests', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const rows = await prisma.replacementRequest.findMany({ include: { order: true, items: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
+      const db = resolveDb();
+      const rows = await db.replacementRequest.findMany({ include: { order: true, items: true, requester: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: 'desc' } });
       res.json({ data: rows });
     } catch (e) { next(e); }
   });
   api.patch('/replacement-requests/:id', async (req, res, next) => {
     try {
       const id = Number(req.params.id);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const status = b.status;
       const data = { status: status || undefined, decidedBy: req.customerId || null, decidedAt: new Date() };
       if (b.replacementShipmentId) data.replacementShipmentId = Number(b.replacementShipmentId);
-      await prisma.replacementRequest.update({ where: { id }, data });
+      await db.replacementRequest.update({ where: { id }, data });
       res.json({ data: { ok: true } });
     } catch (e) { next(e); }
   });
@@ -601,17 +601,17 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.get('/orders/:reference/history', async (req, res, next) => {
     try {
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findUnique({ where: { reference }, select: { id: true } });
+      const db = resolveDb();
+      const order = await db.order.findUnique({ where: { reference }, select: { id: true } });
       if (!order) throw new HttpError(404, 'Order not found');
-      const history = await prisma.orderStatusHistory.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'asc' } });
+      const history = await db.orderStatusHistory.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'asc' } });
       res.json({ data: history });
     } catch (e) { next(e); }
   });
 
   api.get('/shipments', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const type = req.query.type ? String(req.query.type).trim() : null;
       const dispatched = req.query.dispatched;
       const delivered = req.query.delivered;
@@ -625,8 +625,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
       const skip = (page - 1) * limit;
       const [total, rows] = await Promise.all([
-        prisma.shipment.count({ where }),
-        prisma.shipment.findMany({
+        db.shipment.count({ where }),
+        db.shipment.findMany({
           where,
           include: { order: { include: { customer: { select: { id: true, email: true, name: true } } } } },
           orderBy: { createdAt: 'desc' },
@@ -641,7 +641,7 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   // Attempt a stored notification again, for example after SMTP has been configured.
   api.post('/notifications/:id/retry', async (req, res, next) => {
     try {
-      const row = await retryNotification(resolvePrisma(), Number(req.params.id));
+      const row = await retryNotification(resolveDb(), Number(req.params.id));
       if (!row) throw new HttpError(404, 'Notification not found');
       res.json({ data: row });
     } catch (e) { next(e); }
@@ -650,11 +650,11 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.get('/contact-messages', async (req, res, next) => {
     try {
       const { page, limit } = parsePagination(req.query);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const where = CONTACT_STATUSES.has(req.query.status) ? { status: req.query.status } : {};
       const [rows, total] = await Promise.all([
-        prisma.contactMessage.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
-        prisma.contactMessage.count({ where }),
+        db.contactMessage.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
+        db.contactMessage.count({ where }),
       ]);
       res.json({ data: rows, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } });
     } catch (e) { next(e); }
@@ -663,27 +663,27 @@ export function createAdminRouter({ getPrisma, root } = {}) {
   api.patch('/contact-messages/:id', async (req, res, next) => {
     try {
       if (!CONTACT_STATUSES.has(req.body?.status)) throw new HttpError(400, 'Invalid message status');
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const id = Number(req.params.id);
-      const { count } = await prisma.contactMessage.updateMany({ where: { id }, data: { status: req.body.status } });
+      const { count } = await db.contactMessage.updateMany({ where: { id }, data: { status: req.body.status } });
       if (count === 0) throw new HttpError(404, 'Message not found');
-      res.json({ data: await prisma.contactMessage.findUnique({ where: { id } }) });
+      res.json({ data: await db.contactMessage.findUnique({ where: { id } }) });
     } catch (e) { next(e); }
   });
 
   api.post('/contact-messages/:id/notify', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const row = await prisma.contactMessage.findUnique({ where: { id: Number(req.params.id) } });
+      const db = resolveDb();
+      const row = await db.contactMessage.findUnique({ where: { id: Number(req.params.id) } });
       if (!row) throw new HttpError(404, 'Message not found');
-      res.json({ data: await deliverContactNotification(prisma, row) });
+      res.json({ data: await deliverContactNotification(db, row) });
     } catch (e) { next(e); }
   });
 
   api.get('/notifications', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const rows = await prisma.notification.findMany({
+      const db = resolveDb();
+      const rows = await db.notification.findMany({
         orderBy: { createdAt: 'desc' },
         take: 100,
       });
@@ -693,8 +693,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
 
   api.get('/analytics/sales', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const orders = await prisma.order.findMany({
+      const db = resolveDb();
+      const orders = await db.order.findMany({
         select: { createdAt: true, totalMinor: true, status: true },
         orderBy: { createdAt: 'desc' },
         take: 500,
@@ -712,8 +712,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
 
   api.get('/analytics/top-products', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const items = await prisma.orderItem.groupBy({
+      const db = resolveDb();
+      const items = await db.orderItem.groupBy({
         by: ['productId', 'productName'],
         _sum: { quantity: true, lineTotalMinor: true },
         orderBy: { _sum: { quantity: 'desc' } },
@@ -725,8 +725,8 @@ export function createAdminRouter({ getPrisma, root } = {}) {
 
   api.get('/orders/export/csv', async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const rows = await prisma.order.findMany({
+      const db = resolveDb();
+      const rows = await db.order.findMany({
         include: { items: true },
         orderBy: { createdAt: 'desc' },
         take: 1000,

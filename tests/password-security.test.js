@@ -67,7 +67,7 @@ async function build({ emailOtp = true, customers = {}, failDelivery = false } =
   const otps = [];
   const sent = [];
   const find = (where) => people.find((c) => (where.email ? c.email === where.email : c.id === where.id)) || null;
-  const prisma = {
+  const db = {
     otps,
     people,
     customer: {
@@ -92,14 +92,14 @@ async function build({ emailOtp = true, customers = {}, failDelivery = false } =
         return { count: 0 };
       },
     },
-    $transaction: async (fn) => fn(prisma),
+    $transaction: async (fn) => fn(db),
   };
   const otpDeliver = async (message) => {
     if (failDelivery) throw new Error('SMTP refused');
     sent.push(message);
   };
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false, emailOtp, otpDeliver });
-  return { app, prisma, sent, account };
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false, emailOtp, otpDeliver });
+  return { app, db, sent, account };
 }
 
 const cookieHeader = (res) => (res.headers['set-cookie'] || []).map((c) => c.split(';')[0]).filter((c) => !c.endsWith('=')).join('; ');
@@ -159,13 +159,13 @@ test('sign-in: a wrong password sends no code', async () => {
   const ctx = await build();
   assert.equal((await login(ctx.app, 'wrong-password-123')).status, 401);
   assert.equal(ctx.sent.length, 0);
-  assert.equal(ctx.prisma.otps.length, 0);
+  assert.equal(ctx.db.otps.length, 0);
 });
 
 test('codes: only hashes are stored, and they last ten minutes', async () => {
   const ctx = await build();
   const first = await login(ctx.app);
-  const row = ctx.prisma.otps[0];
+  const row = ctx.db.otps[0];
   assert.match(row.codeHash, /^[a-f0-9]{64}$/);
   assert.match(row.challengeHash, /^[a-f0-9]{64}$/);
   const stored = JSON.stringify(row);
@@ -197,7 +197,7 @@ test('codes: guesses made at the same moment cannot exceed the limit', async () 
   const first = await login(ctx.app);
   const wrong = ctx.sent[0].code === '000000' ? '111111' : '000000';
   await Promise.all(Array.from({ length: OTP_MAX_ATTEMPTS * 3 }, () => verify(ctx.app, first.body.data.challenge, wrong)));
-  assert.equal(ctx.prisma.otps[0].attempts, OTP_MAX_ATTEMPTS);
+  assert.equal(ctx.db.otps[0].attempts, OTP_MAX_ATTEMPTS);
 });
 
 test('codes: a code works once, even when used twice at the same moment', async () => {
@@ -218,7 +218,7 @@ test('codes: expired, malformed and mismatched requests start no session', async
     assert.equal(res.status, 400, String(c));
     assert.equal(hasSession(res), false);
   }
-  ctx.prisma.otps[0].expiresAt = new Date(Date.now() - 1000);
+  ctx.db.otps[0].expiresAt = new Date(Date.now() - 1000);
   assert.equal((await verify(ctx.app, challenge, code)).status, 400);
 });
 
@@ -240,15 +240,15 @@ test('resend: waits a minute between codes, replaces the old one, and stops afte
   assert.match(early.body.error.message, /wait \d+ seconds/);
   assert.equal(ctx.sent.length, 1);
 
-  ctx.prisma.otps[0].attempts = 3;
-  ctx.prisma.otps[0].lastSentAt = new Date(Date.now() - OTP_RESEND_COOLDOWN_MS - 1000);
+  ctx.db.otps[0].attempts = 3;
+  ctx.db.otps[0].lastSentAt = new Date(Date.now() - OTP_RESEND_COOLDOWN_MS - 1000);
   assert.equal((await resend()).status, 200);
   assert.equal(ctx.sent.length, 2);
-  assert.equal(ctx.prisma.otps[0].attempts, 0);
+  assert.equal(ctx.db.otps[0].attempts, 0);
   if (ctx.sent[0].code !== ctx.sent[1].code) assert.equal((await verify(ctx.app, challenge, ctx.sent[0].code)).status, 400, 'the old code is gone');
 
-  ctx.prisma.otps[0].sendCount = OTP_MAX_SENDS;
-  ctx.prisma.otps[0].lastSentAt = new Date(Date.now() - OTP_RESEND_COOLDOWN_MS - 1000);
+  ctx.db.otps[0].sendCount = OTP_MAX_SENDS;
+  ctx.db.otps[0].lastSentAt = new Date(Date.now() - OTP_RESEND_COOLDOWN_MS - 1000);
   assert.equal((await resend()).status, 400);
   assert.equal(ctx.sent.length, 2);
 });
@@ -261,7 +261,7 @@ test('email failure: says so plainly, starts nothing and leaves no usable code',
     assert.match(res.body.error.message, /could not email your code/);
     assert.equal(hasSession(res), false);
   });
-  assert.equal(ctx.prisma.otps.length, 0);
+  assert.equal(ctx.db.otps.length, 0);
   assert.match(output, /SMTP refused/);
 });
 
@@ -275,8 +275,8 @@ test('no email set up: sign-in and sign-up refuse clearly, before creating anyth
     const signup = await request(ctx.app).post('/api/auth/register').send({ email: 'new@example.com', password: NEW_PASSWORD });
     assert.equal(signup.status, 503);
   });
-  assert.equal(ctx.prisma.otps.length, 0);
-  assert.equal(ctx.prisma.people.length, 1);
+  assert.equal(ctx.db.otps.length, 0);
+  assert.equal(ctx.db.people.length, 1);
 });
 
 test('createApp leaves codes off unless asked, so other tests can still sign in directly', async () => {
@@ -295,7 +295,7 @@ test('sign-up: the account stays unconfirmed and signed out until the code is en
   assert.equal(res.status, 201);
   assert.equal(res.body.data.otpRequired, true);
   assert.equal(hasSession(res), false);
-  const created = ctx.prisma.people.find((c) => c.email === 'new@example.com');
+  const created = ctx.db.people.find((c) => c.email === 'new@example.com');
   assert.equal(created.emailVerifiedAt, null);
   assert.equal(ctx.sent[0].purpose, 'signup');
 
@@ -354,7 +354,7 @@ test('reset: repeated requests do not flood an inbox or replace the code', async
   await forgot(ctx.app, EMAIL);
   await wait(40);
   assert.equal(ctx.sent.length, 1);
-  assert.equal(ctx.prisma.otps.length, 1);
+  assert.equal(ctx.db.otps.length, 1);
 });
 
 test('reset: the right code changes the password once, and signs out every device', async () => {
@@ -384,8 +384,8 @@ test('reset: a too-short password is refused without using up a guess', async ()
   const { challenge } = (await forgot(ctx.app, EMAIL)).body.data;
   await wait(40);
   assert.equal((await request(ctx.app).post('/api/auth/reset-password').send({ challenge, code: ctx.sent[0].code, password: 'short' })).status, 400);
-  assert.equal(ctx.prisma.otps[0].attempts, 0);
-  assert.equal(ctx.prisma.otps[0].consumedAt, null);
+  assert.equal(ctx.db.otps[0].attempts, 0);
+  assert.equal(ctx.db.otps[0].consumedAt, null);
 });
 
 test('reset: a sign-in code cannot reset a password, and a reset code cannot sign in', async () => {
@@ -414,12 +414,12 @@ test('reset: without email, it says so and creates nothing', async () => {
     assert.doesNotMatch(JSON.stringify(res.body), /we will send/i);
     await wait(40);
   });
-  assert.equal(ctx.prisma.otps.length, 0);
+  assert.equal(ctx.db.otps.length, 0);
 });
 
 /* ---------- Logs ---------- */
 const refusal = async () => ({ status: 'not_configured', error: 'Email is not configured' });
-const DEV = { NODE_ENV: 'development', DATABASE_URL: 'mysql://root@127.0.0.1:3306/zaevi_test' };
+const DEV = { NODE_ENV: 'development', MONGODB_URI: 'mongodb://root@127.0.0.1:27017/zaevi_test' };
 
 test('logs: a code reaches the log only in development on the development database, when email cannot deliver', async () => {
   const logged = await captureConsole(() => sendOtpEmail({ email: 'a@example.com', code: CODE, purpose: 'login' }, { env: DEV, send: refusal }));
@@ -442,12 +442,12 @@ test('logs: .test demo addresses log their code in development, while real addre
 
 test('logs: a code never reaches a log in production, staging or any other setting', async () => {
   const environments = [
-    { NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true', DATABASE_URL: 'mysql://root@127.0.0.1:3306/zaevi' },
+    { NODE_ENV: 'production', ZAEVI_PRODUCTION_DB_APPROVED: 'true', MONGODB_URI: 'mongodb://root@127.0.0.1:27017/zaevi' },
     { NODE_ENV: 'production', ...SMTP_ENV },
     { NODE_ENV: 'staging' },
-    { NODE_ENV: 'test', DATABASE_URL: 'mysql://root@127.0.0.1:3306/zaevi_test' },
+    { NODE_ENV: 'test', MONGODB_URI: 'mongodb://root@127.0.0.1:27017/zaevi_test' },
     {},
-    { NODE_ENV: 'development', DATABASE_URL: 'mysql://root@127.0.0.1:3306/another_database' },
+    { NODE_ENV: 'development', MONGODB_URI: 'mongodb://root@127.0.0.1:27017/another_database' },
   ];
   for (const env of environments) {
     const output = await captureConsole(async () => {
@@ -468,7 +468,7 @@ test('logs: an email failure that repeats the code does not expose it', async ()
 
 test('codes are not stored in the email log', async () => {
   const ctx = await build();
-  ctx.prisma.notification = { create: async () => { throw new Error('a code must not be recorded as a notification'); } };
+  ctx.db.notification = { create: async () => { throw new Error('a code must not be recorded as a notification'); } };
   assert.equal((await login(ctx.app)).status, 200);
 });
 
@@ -479,7 +479,7 @@ test('changing a password signs out other devices, rotates this one and cancels 
   const elsewhere = await signIn(ctx);
   await forgot(ctx.app, EMAIL);
   await wait(40);
-  assert.ok(ctx.prisma.otps.some((o) => o.purpose === 'reset'));
+  assert.ok(ctx.db.otps.some((o) => o.purpose === 'reset'));
 
   const res = await request(ctx.app).post('/api/customer/change-password')
     .set('Cookie', here.header).set('x-csrf-token', here.csrf)
@@ -488,7 +488,7 @@ test('changing a password signs out other devices, rotates this one and cancels 
   assert.equal(await verifyPassword(NEW_PASSWORD, ctx.account.passwordHash), true);
   assert.equal(await isSignedIn(ctx.app, elsewhere.header), false, 'other device signed out');
   assert.equal(await isSignedIn(ctx.app, here.header), false, 'old session ID no longer works');
-  assert.equal(ctx.prisma.otps.some((o) => o.purpose === 'reset'), false);
+  assert.equal(ctx.db.otps.some((o) => o.purpose === 'reset'), false);
 
   const newSid = res.headers['set-cookie'].map((c) => c.split(';')[0]).find((c) => c.startsWith('zaevi.sid='));
   const rotated = `${newSid}; zaevi.csrf=${encodeURIComponent(here.csrf)}`;

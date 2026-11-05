@@ -14,7 +14,7 @@
 
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { issueCsrfToken, validateCsrf, clearCsrfCookie } from '../middleware/csrf.js';
@@ -110,8 +110,8 @@ function createLoginRateLimiter(options) {
   return createRateLimiter(opts);
 }
 
-export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, emailOtp = false, otpDeliver = sendOtpEmail } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createAuthRouter({ getDb, authRateLimit, loginRateLimit, emailOtp = false, otpDeliver = sendOtpEmail } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   // Create rate limiters per app instance (allows test configuration)
@@ -120,10 +120,10 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
   const otpRateLimiter = createAuthRateLimiter(authRateLimit);
 
   /** Emails a code, or explains plainly why it cannot. No session exists until it is entered. */
-  const beginOtp = async (prisma, customer, purpose) => {
+  const beginOtp = async (db, customer, purpose) => {
     if (!otpAvailability().available) throw new HttpError(503, OTP_UNAVAILABLE_MESSAGE);
     try {
-      const { challenge } = await issueOtp(prisma, { customerId: customer.id, email: customer.email, purpose }, { deliver: otpDeliver });
+      const { challenge } = await issueOtp(db, { customerId: customer.id, email: customer.email, purpose }, { deliver: otpDeliver });
       return otpResponse(customer, purpose, challenge);
     } catch (error) {
       console.error(`[auth] Could not send a ${purpose} code: ${error.code || error.message}`);
@@ -187,15 +187,15 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       // Hash password
       const passwordHash = await hashPassword(password);
 
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
       // Check if customer already exists (e.g. from guest checkout)
       let customer;
-      const existing = await prisma.customer.findUnique({ where: { email } });
+      const existing = await db.customer.findUnique({ where: { email } });
       if (existing) {
-        if (!existing.passwordHash && typeof prisma.customer.updateMany === 'function') {
+        if (!existing.passwordHash && typeof db.customer.updateMany === 'function') {
           // Atomic claim: only update if passwordHash is STILL null (concurrent safe)
-          const result = await prisma.customer.updateMany({
+          const result = await db.customer.updateMany({
             where: { id: existing.id, passwordHash: null },
             data: {
               passwordHash,
@@ -206,9 +206,9 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
           if (result.count === 0) {
             throw new HttpError(409, 'An account with this email already exists');
           }
-          customer = await prisma.customer.findUnique({ where: { id: existing.id } });
-        } else if (!existing.passwordHash && typeof prisma.customer.update === 'function') {
-          customer = await prisma.customer.update({
+          customer = await db.customer.findUnique({ where: { id: existing.id } });
+        } else if (!existing.passwordHash && typeof db.customer.update === 'function') {
+          customer = await db.customer.update({
             where: { id: existing.id },
             data: {
               passwordHash,
@@ -219,7 +219,7 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
         } else if (emailOtp && !existing.emailVerifiedAt) {
           // Nobody has proved they own this address yet, so the newest sign-up replaces the
           // password. Whoever did this still cannot get in without the emailed code.
-          customer = await prisma.customer.update({
+          customer = await db.customer.update({
             where: { id: existing.id },
             data: { passwordHash, name: name || existing.name, phone: phone || existing.phone },
           });
@@ -228,7 +228,7 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
         }
       } else {
         try {
-          customer = await prisma.customer.create({
+          customer = await db.customer.create({
             data: {
               email,
               name,
@@ -237,7 +237,7 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
             },
           });
         } catch (error) {
-          if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+          if (error.code === 'DUPLICATE_KEY' && error.meta?.target?.includes('email')) {
             // Generic error — don't reveal if email exists
             throw new HttpError(409, 'An account with this email already exists');
           }
@@ -246,7 +246,7 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       }
 
       if (emailOtp) {
-        return res.status(201).json({ data: await beginOtp(prisma, customer, OTP_PURPOSES.SIGNUP) });
+        return res.status(201).json({ data: await beginOtp(db, customer, OTP_PURPOSES.SIGNUP) });
       }
 
       // Return safe profile (no password hash)
@@ -282,10 +282,10 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
         throw new HttpError(401, 'Invalid email or password');
       }
 
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
       // Find customer by email
-      const customer = await prisma.customer.findUnique({
+      const customer = await db.customer.findUnique({
         where: { email },
       });
 
@@ -301,7 +301,7 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       }
 
       if (emailOtp) {
-        return res.status(200).json({ data: await beginOtp(prisma, customer, OTP_PURPOSES.LOGIN) });
+        return res.status(200).json({ data: await beginOtp(db, customer, OTP_PURPOSES.LOGIN) });
       }
 
       await startSession(req, res, customer);
@@ -337,8 +337,8 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       } catch {
         throw refuse();
       }
-      const prisma = resolvePrisma();
-      const customer = email === config.email ? await prisma.customer.findUnique({ where: { email } }) : null;
+      const db = resolveDb();
+      const customer = email === config.email ? await db.customer.findUnique({ where: { email } }) : null;
       if (!customer?.passwordHash || customer.role !== 'admin' || !(await verifyPassword(password, customer.passwordHash))) {
         throw refuse();
       }
@@ -348,13 +348,13 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       recoveryInUse.add(claim);
       fingerprint = claim;
 
-      const used = await prisma.notification.findFirst({
+      const used = await db.notification.findFirst({
         where: { type: RECOVERY_NOTIFICATION_TYPE, content: { contains: claim } },
       });
       if (used) throw refuse();
 
       // The stored record is what makes the code single-use, so no record means no sign-in.
-      const record = await recordNotification(prisma, {
+      const record = await recordNotification(db, {
         customerId: customer.id,
         recipientEmail: customer.email,
         type: RECOVERY_NOTIFICATION_TYPE,
@@ -379,8 +379,8 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
    */
   router.post('/auth/otp/verify', otpRateLimiter, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const result = await checkOtp(prisma, {
+      const db = resolveDb();
+      const result = await checkOtp(db, {
         challenge: req.body?.challenge,
         code: req.body?.code,
         purposes: [OTP_PURPOSES.SIGNUP, OTP_PURPOSES.LOGIN],
@@ -390,10 +390,10 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       }
       if (result.status !== 'ok') throw new HttpError(400, OTP_EXPIRED_MESSAGE);
 
-      let customer = await prisma.customer.findUnique({ where: { id: result.record.customerId } });
+      let customer = await db.customer.findUnique({ where: { id: result.record.customerId } });
       if (!customer) throw new HttpError(400, OTP_EXPIRED_MESSAGE);
       if (!customer.emailVerifiedAt) {
-        customer = await prisma.customer.update({ where: { id: customer.id }, data: { emailVerifiedAt: new Date() } });
+        customer = await db.customer.update({ where: { id: customer.id }, data: { emailVerifiedAt: new Date() } });
       }
       await startSession(req, res, customer);
       res.status(200).json({ data: publicProfile(customer) });
@@ -406,12 +406,12 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
   router.post('/auth/otp/resend', otpRateLimiter, async (req, res, next) => {
     try {
       if (!otpAvailability().available) throw new HttpError(503, OTP_UNAVAILABLE_MESSAGE);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       let result;
       try {
-        result = await resendOtp(prisma, {
+        result = await resendOtp(db, {
           challenge: req.body?.challenge,
-          getEmail: async (id) => (await prisma.customer.findUnique({ where: { id }, select: { email: true } }))?.email,
+          getEmail: async (id) => (await db.customer.findUnique({ where: { id }, select: { email: true } }))?.email,
         }, { deliver: otpDeliver });
       } catch (error) {
         console.error(`[auth] Could not resend a code: ${error.code || error.message}`);
@@ -456,15 +456,15 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
         return;
       }
       if (!email) return;
-      const prisma = resolvePrisma();
-      const customer = await prisma.customer.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true } });
+      const db = resolveDb();
+      const customer = await db.customer.findUnique({ where: { email }, select: { id: true, email: true, passwordHash: true } });
       if (!customer?.passwordHash) return;
       // Repeated requests must not flood someone's inbox, or replace the code they are about to use.
-      const recent = await prisma.emailOtp.findFirst({
+      const recent = await db.emailOtp.findFirst({
         where: { customerId: customer.id, purpose: OTP_PURPOSES.RESET, consumedAt: null, lastSentAt: { gt: new Date(Date.now() - OTP_RESEND_COOLDOWN_MS) } },
       });
       if (recent) return;
-      await issueOtp(prisma, { customerId: customer.id, email: customer.email, purpose: OTP_PURPOSES.RESET, challenge }, { deliver: otpDeliver });
+      await issueOtp(db, { customerId: customer.id, email: customer.email, purpose: OTP_PURPOSES.RESET, challenge }, { deliver: otpDeliver });
     })().catch((error) => {
       console.error(`[auth] Password reset request failed: ${error.code || error.message}`);
     });
@@ -477,13 +477,13 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
       if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
         throw new HttpError(400, `Password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters`);
       }
-      const prisma = resolvePrisma();
-      const result = await checkOtp(prisma, { challenge: req.body?.challenge, code: req.body?.code, purposes: [OTP_PURPOSES.RESET] });
+      const db = resolveDb();
+      const result = await checkOtp(db, { challenge: req.body?.challenge, code: req.body?.code, purposes: [OTP_PURPOSES.RESET] });
       if (result.status !== 'ok') throw new HttpError(400, RESET_CODE_MESSAGE);
 
       const { customerId, id } = result.record;
       const passwordHash = await hashPassword(password);
-      await prisma.$transaction(async (tx) => {
+      await db.$transaction(async (tx) => {
         await tx.customer.update({ where: { id: customerId }, data: { passwordHash, emailVerifiedAt: new Date() } });
         await tx.emailOtp.deleteMany({ where: { customerId, id: { not: id } } });
       });
@@ -524,8 +524,8 @@ export function createAuthRouter({ getPrisma, authRateLimit, loginRateLimit, ema
         return res.status(200).json({ data: null });
       }
 
-      const prisma = resolvePrisma();
-      const customer = await prisma.customer.findUnique({
+      const db = resolveDb();
+      const customer = await db.customer.findUnique({
         where: { id: req.session.customerId },
         select: {
           id: true,

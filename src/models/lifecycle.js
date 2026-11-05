@@ -31,9 +31,9 @@ export function calculateEstimates(config, createdAt) {
   };
 }
 
-export async function getDeliveryConfig(prisma) {
+export async function getDeliveryConfig(db) {
   try {
-    const cfg = await prisma.deliveryEstimateConfig.findUnique({ where: { id: 1 } });
+    const cfg = await db.deliveryEstimateConfig.findUnique({ where: { id: 1 } });
     return cfg || DEFAULT_ESTIMATE_CONFIG;
   } catch (e) {
     return DEFAULT_ESTIMATE_CONFIG;
@@ -53,9 +53,9 @@ export async function createInitialOrderHistory(tx, order, customerId) {
   });
 }
 
-export async function transitionOrderStatus(prisma, { reference, nextStatus, actorId, note, visibility }) {
+export async function transitionOrderStatus(db, { reference, nextStatus, actorId, note, visibility }) {
   if (!isValidOrderStatus(nextStatus)) throw new HttpError(400, 'Invalid status');
-  return prisma.$transaction(async (tx) => {
+  return db.$transaction(async (tx) => {
     const current = await tx.order.findUnique({ where: { reference }, select: { status: true, id: true } });
     if (!current) throw new HttpError(404, 'Order not found');
     assertOrderStatusTransition(current.status, nextStatus);

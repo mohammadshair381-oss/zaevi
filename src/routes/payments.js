@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -22,8 +22,8 @@ function signatureMatches(expected, provided) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-export function createPaymentsRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createPaymentsRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   function isConfigured() {
@@ -37,15 +37,15 @@ export function createPaymentsRouter({ getPrisma } = {}) {
   router.post('/payments/orders/:reference/create', requireAuth, validateCsrf, async (req, res, next) => {
     try {
       if (!isConfigured()) throw new HttpError(503, 'Payment configuration is incomplete');
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const reference = String(req.params.reference || '').trim();
-      const order = await prisma.order.findFirst({ where: { reference, customerId: req.customerId } });
+      const order = await db.order.findFirst({ where: { reference, customerId: req.customerId } });
       if (!order) throw new HttpError(404, 'Order not found');
       if (order.status === 'cancelled') throw new HttpError(400, 'Order is cancelled');
-      const alreadyPaid = await prisma.payment.findFirst({ where: { orderId: order.id, status: 'captured' } });
+      const alreadyPaid = await db.payment.findFirst({ where: { orderId: order.id, status: 'captured' } });
       if (alreadyPaid) throw new HttpError(409, 'This order has already been paid');
       // Create local payment attempt
-      const payment = await prisma.payment.create({
+      const payment = await db.payment.create({
         data: { orderId: order.id, amountMinor: order.totalMinor, currency: order.currency || 'INR', status: 'created' },
       });
       // Create Razorpay order via REST
@@ -57,7 +57,7 @@ export function createPaymentsRouter({ getPrisma } = {}) {
       });
       const rzJson = await rz.json().catch(() => ({}));
       if (!rz.ok || !rzJson.id) throw new HttpError(502, 'Failed to create payment order');
-      await prisma.payment.update({ where: { id: payment.id }, data: { providerOrderId: rzJson.id, status: 'attempted' } });
+      await db.payment.update({ where: { id: payment.id }, data: { providerOrderId: rzJson.id, status: 'attempted' } });
       res.json({ data: { keyId: process.env.RAZORPAY_KEY_ID, razorpayOrderId: rzJson.id, amount: order.totalMinor, currency: 'INR', orderReference: reference } });
     } catch (e) { next(e); }
   });
@@ -68,12 +68,12 @@ export function createPaymentsRouter({ getPrisma } = {}) {
       const b = req.body || {};
       const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = b;
       if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) throw new HttpError(400, 'Missing payment fields');
-      const prisma = resolvePrisma();
-      const payment = await prisma.payment.findFirst({ where: { providerOrderId: razorpay_order_id }, include: { order: { select: { customerId: true } } } });
+      const db = resolveDb();
+      const payment = await db.payment.findFirst({ where: { providerOrderId: razorpay_order_id }, include: { order: { select: { customerId: true } } } });
       if (!payment || payment.order?.customerId !== req.customerId) throw new HttpError(404, 'Payment not found');
       const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(razorpay_order_id + '|' + razorpay_payment_id).digest('hex');
       if (!signatureMatches(expected, razorpay_signature)) throw new HttpError(400, 'Invalid payment signature');
-      await prisma.payment.update({ where: { id: payment.id }, data: { providerPaymentId: razorpay_payment_id, status: 'captured', capturedAt: new Date() } });
+      await db.payment.update({ where: { id: payment.id }, data: { providerPaymentId: razorpay_payment_id, status: 'captured', capturedAt: new Date() } });
       res.json({ data: { ok: true } });
     } catch (e) { next(e); }
   });
@@ -88,21 +88,21 @@ export function createPaymentsRouter({ getPrisma } = {}) {
       if (!signatureMatches(expected, signature)) throw new HttpError(400, 'Invalid webhook signature');
       const event = JSON.parse(raw.toString('utf8'));
       const eventId = event.id || event.event + ':' + (event.payload && event.payload.payment && event.payload.payment.entity && event.payload.payment.entity.id);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       // idempotency
-      const existing = await prisma.paymentEvent.findUnique({ where: { eventId } }).catch(() => null);
+      const existing = await db.paymentEvent.findUnique({ where: { eventId } }).catch(() => null);
       if (existing) return res.json({ data: { ok: true, duplicate: true } });
-      await prisma.paymentEvent.create({ data: { eventId, eventType: event.event, payload: raw.toString('utf8'), processedAt: new Date() } });
+      await db.paymentEvent.create({ data: { eventId, eventType: event.event, payload: raw.toString('utf8'), processedAt: new Date() } });
 
       // Covers the case where the customer closes the page before the browser verifies.
       const entity = event.payload?.payment?.entity;
       if (event.event === 'payment.captured' && entity?.order_id) {
-        await prisma.payment.updateMany({
+        await db.payment.updateMany({
           where: { providerOrderId: entity.order_id },
           data: { status: 'captured', providerPaymentId: entity.id, method: entity.method || null, capturedAt: new Date() },
         });
       } else if (event.event === 'payment.failed' && entity?.order_id) {
-        await prisma.payment.updateMany({
+        await db.payment.updateMany({
           where: { providerOrderId: entity.order_id, status: { not: 'captured' } },
           data: { status: 'failed', failureCode: entity.error_code || null, failureDescription: entity.error_description ? String(entity.error_description).slice(0, 500) : null },
         });
@@ -113,20 +113,20 @@ export function createPaymentsRouter({ getPrisma } = {}) {
 
   router.get('/customer/payments', requireAuth, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const orders = await prisma.order.findMany({ where: { customerId: req.customerId }, select: { id: true } });
+      const db = resolveDb();
+      const orders = await db.order.findMany({ where: { customerId: req.customerId }, select: { id: true } });
       const ids = orders.map((o) => o.id);
-      const payments = await prisma.payment.findMany({ where: { orderId: { in: ids } }, orderBy: { createdAt: 'desc' } });
+      const payments = await db.payment.findMany({ where: { orderId: { in: ids } }, orderBy: { createdAt: 'desc' } });
       res.json({ data: payments });
     } catch (e) { next(e); }
   });
 
   router.get('/admin/payments', requireAuth, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const customer = await prisma.customer.findUnique({ where: { id: req.customerId }, select: { role: true } });
+      const db = resolveDb();
+      const customer = await db.customer.findUnique({ where: { id: req.customerId }, select: { role: true } });
       if (!customer || customer.role !== 'admin') throw new HttpError(404, 'Not Found');
-      const payments = await prisma.payment.findMany({ include: { order: true }, orderBy: { createdAt: 'desc' }, take: 100 });
+      const payments = await db.payment.findMany({ include: { order: true }, orderBy: { createdAt: 'desc' }, take: 100 });
       res.json({ data: payments });
     } catch (e) { next(e); }
   });
@@ -134,11 +134,11 @@ export function createPaymentsRouter({ getPrisma } = {}) {
   // POST /api/admin/payments/:id/refund
   router.post('/admin/payments/:id/refund', requireAuth, validateCsrf, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const customer = await prisma.customer.findUnique({ where: { id: req.customerId }, select: { role: true } });
+      const db = resolveDb();
+      const customer = await db.customer.findUnique({ where: { id: req.customerId }, select: { role: true } });
       if (!customer || customer.role !== 'admin') throw new HttpError(404, 'Not Found');
       const paymentId = Number(req.params.id);
-      const payment = await prisma.payment.findUnique({ where: { id: paymentId }, include: { refunds: true } });
+      const payment = await db.payment.findUnique({ where: { id: paymentId }, include: { refunds: true } });
       if (!payment) throw new HttpError(404, 'Payment not found');
       if (payment.status !== 'captured') throw new HttpError(400, 'Only captured payments can be refunded');
       const amount = Number((req.body && req.body.amountMinor));
@@ -146,7 +146,7 @@ export function createPaymentsRouter({ getPrisma } = {}) {
       const already = (payment.refunds || []).filter((r) => r.status === 'processed' || r.status === 'created').reduce((s, r) => s + r.amountMinor, 0);
       if (amount + already > payment.amountMinor) throw new HttpError(400, 'Refund exceeds captured amount');
       if (!isConfigured()) throw new HttpError(503, 'Payment configuration is incomplete');
-      const refund = await prisma.refund.create({
+      const refund = await db.refund.create({
         data: { paymentId, amountMinor: amount, currency: payment.currency, status: 'created', reason: (req.body && req.body.reason) || null },
       });
       // Call Razorpay refund API
@@ -158,12 +158,12 @@ export function createPaymentsRouter({ getPrisma } = {}) {
       });
       const rzJson = await rz.json().catch(() => ({}));
       if (!rz.ok || !rzJson.id) {
-        await prisma.refund.update({ where: { id: refund.id }, data: { status: 'failed', failureCode: String(rz.status), failureDescription: 'Refund failed' } });
+        await db.refund.update({ where: { id: refund.id }, data: { status: 'failed', failureCode: String(rz.status), failureDescription: 'Refund failed' } });
         throw new HttpError(502, 'Refund failed');
       }
-      const processed = await prisma.refund.update({ where: { id: refund.id }, data: { providerRefundId: rzJson.id, status: 'processed', processedAt: new Date() } });
-      const refundedOrder = await prisma.order.findUnique({ where: { id: payment.orderId } });
-      if (refundedOrder) await notifyRefundProcessed(prisma, { order: refundedOrder, refund: processed });
+      const processed = await db.refund.update({ where: { id: refund.id }, data: { providerRefundId: rzJson.id, status: 'processed', processedAt: new Date() } });
+      const refundedOrder = await db.order.findUnique({ where: { id: payment.orderId } });
+      if (refundedOrder) await notifyRefundProcessed(db, { order: refundedOrder, refund: processed });
       res.json({ data: { ok: true, refundId: rzJson.id } });
     } catch (e) { next(e); }
   });
@@ -171,14 +171,14 @@ export function createPaymentsRouter({ getPrisma } = {}) {
   // GET /api/orders/:reference/invoice (HTML)
   router.get('/orders/:reference/invoice', requireAuth, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const reference = String(req.params.reference || '').trim();
-      const customer = await prisma.customer.findUnique({ where: { id: req.customerId } });
+      const customer = await db.customer.findUnique({ where: { id: req.customerId } });
       const isAdmin = customer?.role === 'admin';
       const where = isAdmin ? { reference } : { reference, customerId: req.customerId };
-      const order = await prisma.order.findFirst({ where, include: { items: true, coupon: true } });
+      const order = await db.order.findFirst({ where, include: { items: true, coupon: true } });
       if (!order) throw new HttpError(404, 'Order not found');
-      const payments = await prisma.payment.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'desc' } });
+      const payments = await db.payment.findMany({ where: { orderId: order.id }, orderBy: { createdAt: 'desc' } });
       const captured = payments.find((p) => p.status === 'captured');
 
       const subtotalINR = (order.subtotalMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 });

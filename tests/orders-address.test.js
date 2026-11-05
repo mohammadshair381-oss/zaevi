@@ -13,7 +13,7 @@ const CATALOG = [
   { id: 'ZV001', name: 'Silk Shirt', price: 12000, available: true, sizes: [{ size: 'M' }, { size: 'L' }] },
 ];
 
-function createFakePrisma() {
+function createFakeDb() {
   const customers = new Map();
   const addresses = [];
   const orders = [];
@@ -25,7 +25,7 @@ function createFakePrisma() {
     async create({ data }) {
       if (customers.has(data.email)) {
         const error = new Error('Unique constraint failed on the fields: (`email`)');
-        error.code = 'P2002';
+        error.code = 'DUPLICATE_KEY';
         error.meta = { target: 'Customer_email_key' };
         throw error;
       }
@@ -132,9 +132,9 @@ function createFakePrisma() {
 }
 
 function buildApp({ requireAuthForOrders = false } = {}) {
-  const prisma = createFakePrisma();
+  const db = createFakeDb();
   const app = createApp({
-    prisma,
+    db,
     logger: { log() {}, error() {} },
     sessionSecret: 'test-secret-32-characters-long-enough',
     authRateLimit: false,
@@ -142,7 +142,7 @@ function buildApp({ requireAuthForOrders = false } = {}) {
     orderRateLimit: false,
     requireAuthForOrders,
   });
-  return { app, prisma };
+  return { app, db };
 }
 
 function orderBody(overrides = {}) {
@@ -173,7 +173,7 @@ const STORED_ADDRESS = {
 };
 
 /** Register + log in, then seed a saved address owned by that customer. */
-async function loginWithAddress(app, prisma, email) {
+async function loginWithAddress(app, db, email) {
   const creds = { email, password: 'securepassword123' };
   const register = await request(app)
     .post('/api/auth/register')
@@ -196,7 +196,7 @@ async function loginWithAddress(app, prisma, email) {
   }
   assert.ok(jar['zaevi.sid'] && csrf, 'session + CSRF cookies set');
 
-  const address = await prisma.address.create({ data: { customerId, ...STORED_ADDRESS } });
+  const address = await db.address.create({ data: { customerId, ...STORED_ADDRESS } });
   return {
     cookieHeader: Object.entries(jar).map(([n, v]) => `${n}=${v}`).join('; '),
     csrf,
@@ -216,8 +216,8 @@ function postOrder(app, session, body, key) {
 }
 
 test('an owned addressId becomes the order shipping snapshot, overriding client fields', async () => {
-  const { app, prisma } = buildApp();
-  const session = await loginWithAddress(app, prisma, 'buyer@example.com');
+  const { app, db } = buildApp();
+  const session = await loginWithAddress(app, db, 'buyer@example.com');
 
   const res = await request(app)
     .post('/api/orders')
@@ -227,7 +227,7 @@ test('an owned addressId becomes the order shipping snapshot, overriding client 
     .send(orderBody({ addressId: session.addressId }));
 
   assert.equal(res.status, 201, JSON.stringify(res.body));
-  const stored = prisma.__orders[0];
+  const stored = db.__orders[0];
   assert.equal(stored.shippingName, 'Stored Name');
   assert.equal(stored.shippingAddress, '99 Stored Street, Floor 3, Bandra, Opposite the park');
   assert.equal(stored.shippingCity, 'Mumbai');
@@ -237,9 +237,9 @@ test('an owned addressId becomes the order shipping snapshot, overriding client 
 });
 
 test('a foreign customer addressId is rejected and creates no order', async () => {
-  const { app, prisma } = buildApp();
-  const victim = await loginWithAddress(app, prisma, 'victim@example.com');
-  const attacker = await loginWithAddress(app, prisma, 'attacker@example.com');
+  const { app, db } = buildApp();
+  const victim = await loginWithAddress(app, db, 'victim@example.com');
+  const attacker = await loginWithAddress(app, db, 'attacker@example.com');
 
   const res = await request(app)
     .post('/api/orders')
@@ -250,33 +250,33 @@ test('a foreign customer addressId is rejected and creates no order', async () =
 
   assert.equal(res.status, 400);
   assert.match(res.body.error.message, /address is not available/i);
-  assert.equal(prisma.__orders.length, 0, 'no order row is created for a foreign address');
+  assert.equal(db.__orders.length, 0, 'no order row is created for a foreign address');
 });
 
 test('an addressId without a session is rejected', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const res = await request(app)
     .post('/api/orders')
     .set({ 'Idempotency-Key': 'addr-order-key-000000000000000003' })
     .send(orderBody({ addressId: 1 }));
   assert.equal(res.status, 401);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('guest checkout is still blocked when the order policy requires auth', async () => {
-  const { app, prisma } = buildApp({ requireAuthForOrders: true });
+  const { app, db } = buildApp({ requireAuthForOrders: true });
   const res = await request(app)
     .post('/api/orders')
     .set({ 'Idempotency-Key': 'addr-order-key-000000000000000009' })
     .set('x-csrf-token', 'anything')
     .send(orderBody({ addressId: 1 }));
   assert.equal(res.status, 401);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('an unknown addressId is rejected', async () => {
-  const { app, prisma } = buildApp();
-  const session = await loginWithAddress(app, prisma, 'unknown@example.com');
+  const { app, db } = buildApp();
+  const session = await loginWithAddress(app, db, 'unknown@example.com');
   const res = await request(app)
     .post('/api/orders')
     .set({ 'Idempotency-Key': 'addr-order-key-000000000000000004' })
@@ -285,12 +285,12 @@ test('an unknown addressId is rejected', async () => {
     .send(orderBody({ addressId: session.addressId + 9999 }));
   assert.equal(res.status, 400);
   assert.match(res.body.error.message, /address is not available/i);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('editing or deleting the saved address never rewrites past orders', async () => {
-  const { app, prisma } = buildApp();
-  const session = await loginWithAddress(app, prisma, 'immutable@example.com');
+  const { app, db } = buildApp();
+  const session = await loginWithAddress(app, db, 'immutable@example.com');
 
   const res = await request(app)
     .post('/api/orders')
@@ -299,7 +299,7 @@ test('editing or deleting the saved address never rewrites past orders', async (
     .set('x-csrf-token', session.csrf)
     .send(orderBody({ addressId: session.addressId }));
   assert.equal(res.status, 201);
-  const before = prisma.__orders[0].shippingAddress;
+  const before = db.__orders[0].shippingAddress;
 
   const patched = await request(app)
     .patch(`/api/customer/addresses/${session.addressId}`)
@@ -314,15 +314,15 @@ test('editing or deleting the saved address never rewrites past orders', async (
     .set('x-csrf-token', session.csrf);
   assert.equal(removed.status, 200);
 
-  assert.equal(prisma.__orders[0].shippingAddress, before, 'order history is frozen');
-  assert.equal(prisma.__orders[0].shippingCity, 'Mumbai');
-  assert.equal(prisma.__orders[0].shippingPostalCode, '400050');
-  assert.equal(prisma.__addresses.length, 0);
+  assert.equal(db.__orders[0].shippingAddress, before, 'order history is frozen');
+  assert.equal(db.__orders[0].shippingCity, 'Mumbai');
+  assert.equal(db.__orders[0].shippingPostalCode, '400050');
+  assert.equal(db.__addresses.length, 0);
 });
 
 test('a malformed addressId is rejected with 400', async () => {
-  const { app, prisma } = buildApp();
-  const session = await loginWithAddress(app, prisma, 'malformed@example.com');
+  const { app, db } = buildApp();
+  const session = await loginWithAddress(app, db, 'malformed@example.com');
   const res = await request(app)
     .post('/api/orders')
     .set({ 'Idempotency-Key': 'addr-order-key-000000000000000007' })
@@ -330,12 +330,12 @@ test('a malformed addressId is rejected with 400', async () => {
     .set('x-csrf-token', session.csrf)
     .send(orderBody({ addressId: 'not-a-number' }));
   assert.equal(res.status, 400);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('idempotent replay with the same addressId returns the original order', async () => {
-  const { app, prisma } = buildApp();
-  const session = await loginWithAddress(app, prisma, 'replay@example.com');
+  const { app, db } = buildApp();
+  const session = await loginWithAddress(app, db, 'replay@example.com');
   const key = 'addr-order-key-000000000000000006';
   const send = () =>
     request(app)
@@ -350,5 +350,5 @@ test('idempotent replay with the same addressId returns the original order', asy
   const replay = await send();
   assert.equal(replay.status, 200);
   assert.equal(replay.body.data.reference, first.body.data.reference);
-  assert.equal(prisma.__orders.length, 1, 'no duplicate order row');
+  assert.equal(db.__orders.length, 1, 'no duplicate order row');
 });

@@ -16,7 +16,7 @@ import { createReviewsRouter } from './routes/reviews.js';
 import { createCouponsRouter } from './routes/coupons.js';
 import { createContactRouter } from './routes/contact.js';
 import { createSiteStudioPublicRouter } from './routes/site-studio.js';
-import { getPrismaClient } from './db/connect.js';
+import { getDbClient } from './db/connect.js';
 import { publicStaticPaths, securityHeaders } from './middleware/security.js';
 import { notFoundHandler, errorHandler } from './middleware/errors.js';
 import { sessionMiddleware } from './middleware/session.js';
@@ -36,7 +36,7 @@ export const projectRoot = path.resolve(__dirname, '..');
 export function createApp({ 
   root = projectRoot, 
   logger = console, 
-  prisma, 
+  db, 
   orderRateLimit, 
   sessionSecret,
   authRateLimit,
@@ -46,7 +46,7 @@ export function createApp({
   otpDeliver,
 } = {}) {
   const app = express();
-  const resolvePrisma = () => prisma ?? getPrismaClient();
+  const resolveDb = () => db ?? getDbClient();
 
   app.disable('x-powered-by');
 
@@ -70,10 +70,10 @@ export function createApp({
 
   // API routes are registered before the static-file handler.
   app.use('/api', healthRouter);
-  app.use('/api', createProductsRouter({ getPrisma: resolvePrisma }));
-  app.use('/api', createPaymentsRouter({ getPrisma: resolvePrisma }));
+  app.use('/api', createProductsRouter({ getDb: resolveDb }));
+  app.use('/api', createPaymentsRouter({ getDb: resolveDb }));
   app.use('/api', createOrdersRouter({
-    getPrisma: resolvePrisma,
+    getDb: resolveDb,
     orderRateLimit,
     requireAuthForOrders,
   }));
@@ -82,35 +82,35 @@ export function createApp({
   app.use('/api', issueCsrfToken);
 
   app.use('/api', createAuthRouter({ 
-    getPrisma: resolvePrisma,
+    getDb: resolveDb,
     authRateLimit,
     loginRateLimit,
     emailOtp,
     otpDeliver,
   }));
   // Customer routes mounted at /api/customer to avoid middleware conflicts
-  app.use('/api/customer', createCustomerRouter({ getPrisma: resolvePrisma }));
-  app.use('/api/customer', createAddressRouter({ getPrisma: resolvePrisma }));
+  app.use('/api/customer', createCustomerRouter({ getDb: resolveDb }));
+  app.use('/api/customer', createAddressRouter({ getDb: resolveDb }));
   app.use('/api', issueCsrfToken);
 
   // Marketing, Reviews & Coupons
-  app.use('/api/newsletter', createNewsletterRouter({ getPrisma: resolvePrisma }));
-  app.use('/api', createContactRouter({ getPrisma: resolvePrisma }));
-  app.use('/api', createSiteStudioPublicRouter({ getPrisma: resolvePrisma }));
-  app.use('/api/coupons', createCouponsRouter({ getPrisma: resolvePrisma }));
-  app.use('/api', createReviewsRouter({ getPrisma: resolvePrisma }));
+  app.use('/api/newsletter', createNewsletterRouter({ getDb: resolveDb }));
+  app.use('/api', createContactRouter({ getDb: resolveDb }));
+  app.use('/api', createSiteStudioPublicRouter({ getDb: resolveDb }));
+  app.use('/api/coupons', createCouponsRouter({ getDb: resolveDb }));
+  app.use('/api', createReviewsRouter({ getDb: resolveDb }));
 
   // Admin console: protected page (/admin) + read-only APIs (/api/admin/*),
   // all behind the per-request role gate. Mounted BEFORE the static handler;
   // direct static access to admin.html is blocked in middleware/security.js.
-  app.use(createAdminRouter({ getPrisma: resolvePrisma, root }));
-  app.use('/api', createCouponsRouter({ getPrisma: resolvePrisma }));
+  app.use(createAdminRouter({ getDb: resolveDb, root }));
+  app.use('/api', createCouponsRouter({ getDb: resolveDb }));
 
   // CMS backend foundation (admin-only).
-  app.use('/api/admin/cms', createCmsRouter({ getPrisma: resolvePrisma }));
+  app.use('/api/admin/cms', createCmsRouter({ getDb: resolveDb }));
 
   // Public CMS read-only endpoints. These expose published content only.
-  app.use('/api/cms', createCmsPublicRouter({ getPrisma: resolvePrisma }));
+  app.use('/api/cms', createCmsPublicRouter({ getDb: resolveDb }));
 
   // Unmatched API paths are JSON 404s and must never fall through to the
   // static handler (including crafted `/api/../...` paths).

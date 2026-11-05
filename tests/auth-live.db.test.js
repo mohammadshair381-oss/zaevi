@@ -3,32 +3,32 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import 'dotenv/config';
 
-if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('/zaevi') && !process.env.DATABASE_URL.includes('/zaevi_test')) {
-  process.env.DATABASE_URL = process.env.DATABASE_URL.replace(/\/zaevi(\b|\?)/, '/zaevi_test$1');
-}
 
-if (process.env.DATABASE_URL && !process.env.DATABASE_URL.endsWith('zaevi_test')) {
-  throw new Error(`auth-live.db.test.js safety guard: refusing to run against "${process.env.DATABASE_URL}"`);
-}
 
-import { getPrismaClient } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { getDbClient } from '../src/db/connect.js';
 import { hashPassword, verifyPassword } from '../src/models/auth.js';
+
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('auth-live.db.test.js refuses to run against this database');
+}
 
 function uniqueSuffix() {
   return randomBytes(6).toString('hex');
 }
 
 test('zaevi_test: guest customer account claiming, password hashing, and order ownership', async (t) => {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL not set; skipping live DB test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI not set; skipping live DB test');
     return;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
+    await db.$ping();
   } catch (error) {
-    t.diagnostic(`MySQL unreachable: ${error.message}`);
-    t.skip('MySQL unreachable');
+    t.diagnostic(`the database unreachable: ${error.message}`);
+    t.skip('the database unreachable');
     return;
   }
 
@@ -41,7 +41,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
 
   try {
     // 1. Simulate guest checkout: Customer row created with passwordHash: null
-    const guestCustomer = await prisma.customer.create({
+    const guestCustomer = await db.customer.create({
       data: {
         email: guestEmail,
         name: 'Guest Customer',
@@ -54,7 +54,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
     assert.equal(guestCustomer.passwordHash, null);
 
     // 2. Link an order to this guest customer
-    const order = await prisma.order.create({
+    const order = await db.order.create({
       data: {
         reference: `ZV-TEST-${suffix}`,
         status: 'pending',
@@ -78,7 +78,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
     // 3. Guest registers with the same email address
     const hashedPassword = await hashPassword(securePassword);
 
-    const result = await prisma.customer.updateMany({
+    const result = await db.customer.updateMany({
       where: { id: guestCustomer.id, passwordHash: null },
       data: {
         passwordHash: hashedPassword,
@@ -89,7 +89,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
     assert.equal(result.count, 1, 'Account successfully claimed');
 
     // 4. Verify password verifies correctly
-    const claimedCustomer = await prisma.customer.findUnique({
+    const claimedCustomer = await db.customer.findUnique({
       where: { id: guestCustomer.id },
     });
     assert.equal(claimedCustomer.id, guestCustomer.id, 'Customer ID was preserved');
@@ -100,7 +100,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
     assert.equal(isValidPassword, true, 'Claimed password hash verifies with scrypt');
 
     // 5. Verify existing orders are still owned by this customer
-    const customerOrders = await prisma.order.findMany({
+    const customerOrders = await db.order.findMany({
       where: { customerId: claimedCustomer.id },
     });
     assert.equal(customerOrders.length, 1);
@@ -108,7 +108,7 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
     assert.equal(customerOrders[0].totalMinor, 1500000);
 
     // 6. Verify duplicate claim attempt fails
-    const secondClaim = await prisma.customer.updateMany({
+    const secondClaim = await db.customer.updateMany({
       where: { id: guestCustomer.id, passwordHash: null },
       data: { passwordHash: hashedPassword },
     });
@@ -117,11 +117,11 @@ test('zaevi_test: guest customer account claiming, password hashing, and order o
   } finally {
     // Cleanup rows created during this test
     if (orderId) {
-      await prisma.order.deleteMany({ where: { id: orderId } });
+      await db.order.deleteMany({ where: { id: orderId } });
     }
     if (customerId) {
-      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await db.customer.deleteMany({ where: { id: customerId } });
     }
-    await prisma.$disconnect();
+    await db.$disconnect();
   }
 });

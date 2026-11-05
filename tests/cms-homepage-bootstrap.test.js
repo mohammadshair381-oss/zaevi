@@ -204,7 +204,7 @@ test('validateHomepageState preserves omitted fields from the current valid draf
 });
 
 test('getOrCreateHomepagePage preserves homepage state on bootstrap', async () => {
-  const prisma = {
+  const db = {
     cmsPage: {
       findUnique: async () => null,
       create: async ({ data }) => ({ id: 1, ...data }),
@@ -230,10 +230,10 @@ test('getOrCreateHomepagePage preserves homepage state on bootstrap', async () =
     cmsPageRevision: {
       create: async ({ data }) => ({ id: 1, ...data, createdAt: new Date() }),
     },
-    $transaction: async (callback) => callback(prisma),
+    $transaction: async (callback) => callback(db),
   };
 
-  const page = await getOrCreateHomepagePage(prisma);
+  const page = await getOrCreateHomepagePage(db);
   assert.equal(page.slug, 'home');
   assert.deepEqual(page.draftRevision.snapshot.homepage, CMS_DEFAULT_HOMEPAGE_STATE);
 });
@@ -252,7 +252,7 @@ test('getOrCreateHomepagePage handles a concurrent uniqueness conflict', async (
   };
 
   let findCount = 0;
-  const prisma = {
+  const db = {
     cmsPage: {
       findUnique: async () => {
         findCount += 1;
@@ -260,14 +260,14 @@ test('getOrCreateHomepagePage handles a concurrent uniqueness conflict', async (
       },
       create: async () => {
         const error = new Error('Unique constraint failed');
-        error.code = 'P2002';
+        error.code = 'DUPLICATE_KEY';
         throw error;
       },
     },
-    $transaction: async (callback) => callback(prisma),
+    $transaction: async (callback) => callback(db),
   };
 
-  const page = await getOrCreateHomepagePage(prisma);
+  const page = await getOrCreateHomepagePage(db);
   assert.equal(page.id, existingPage.id);
   assert.deepEqual(page.draftRevision.snapshot.homepage, CMS_DEFAULT_HOMEPAGE_STATE);
 });

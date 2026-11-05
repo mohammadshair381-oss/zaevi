@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth, createRequireAdmin } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
 
-export function createReviewsRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createReviewsRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
-  const requireAdmin = createRequireAdmin({ getPrisma: resolvePrisma });
+  const requireAdmin = createRequireAdmin({ getDb: resolveDb });
 
   // -------------------------------------------------------------------------
   // Public & Customer Endpoints
@@ -17,12 +17,12 @@ export function createReviewsRouter({ getPrisma } = {}) {
   router.get('/products/:id/reviews', async (req, res, next) => {
     try {
       const productId = String(req.params.id || '').trim();
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
-      const product = await prisma.product.findUnique({ where: { id: productId } });
+      const product = await db.product.findUnique({ where: { id: productId } });
       if (!product) throw new HttpError(404, 'Product not found');
 
-      const reviews = await prisma.review.findMany({
+      const reviews = await db.review.findMany({
         where: { productId, status: 'approved' },
         orderBy: { createdAt: 'desc' },
         select: {
@@ -58,9 +58,9 @@ export function createReviewsRouter({ getPrisma } = {}) {
   router.post('/products/:id/reviews', requireAuth, validateCsrf, async (req, res, next) => {
     try {
       const productId = String(req.params.id || '').trim();
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
-      const product = await prisma.product.findUnique({ where: { id: productId } });
+      const product = await db.product.findUnique({ where: { id: productId } });
       if (!product) throw new HttpError(404, 'Product not found');
 
       const { rating, title, content } = req.body || {};
@@ -77,7 +77,7 @@ export function createReviewsRouter({ getPrisma } = {}) {
 
       const cleanTitle = title ? String(title).trim().slice(0, 200) : null;
 
-      const customer = await prisma.customer.findUnique({
+      const customer = await db.customer.findUnique({
         where: { id: req.customerId },
         select: { name: true, email: true },
       });
@@ -85,7 +85,7 @@ export function createReviewsRouter({ getPrisma } = {}) {
       const authorName = customer?.name || customer?.email?.split('@')[0] || 'Verified Patron';
 
       // Check if customer previously bought this product on a delivered/shipped order
-      const purchaseCount = await prisma.orderItem.count({
+      const purchaseCount = await db.orderItem.count({
         where: {
           productId,
           order: {
@@ -95,7 +95,7 @@ export function createReviewsRouter({ getPrisma } = {}) {
         },
       });
 
-      const review = await prisma.review.create({
+      const review = await db.review.create({
         data: {
           productId,
           customerId: req.customerId,
@@ -134,8 +134,8 @@ export function createReviewsRouter({ getPrisma } = {}) {
         throw new HttpError(400, 'Invalid review ID');
       }
 
-      const prisma = resolvePrisma();
-      const updated = await prisma.review.update({
+      const db = resolveDb();
+      const updated = await db.review.update({
         where: { id: reviewId },
         data: { helpfulCount: { increment: 1 } },
         select: { id: true, helpfulCount: true },
@@ -154,11 +154,11 @@ export function createReviewsRouter({ getPrisma } = {}) {
   // GET /api/admin/reviews
   router.get('/admin/reviews', requireAdmin, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const status = req.query.status ? String(req.query.status).trim() : undefined;
       const where = status ? { status } : {};
 
-      const reviews = await prisma.review.findMany({
+      const reviews = await db.review.findMany({
         where,
         include: {
           product: { select: { id: true, name: true } },
@@ -184,8 +184,8 @@ export function createReviewsRouter({ getPrisma } = {}) {
         throw new HttpError(400, 'Invalid status. Must be approved, rejected, or pending.');
       }
 
-      const prisma = resolvePrisma();
-      const review = await prisma.review.update({
+      const db = resolveDb();
+      const review = await db.review.update({
         where: { id: reviewId },
         data: { status },
       });

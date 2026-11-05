@@ -1,6 +1,6 @@
 import { getEmailConfig } from '../services/email.js';
 import { Router } from 'express';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { notifyNewsletterWelcome } from '../services/notification.js';
@@ -12,10 +12,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * if the coupon is switched off, expired or used up, so the site never promises a
  * code that checkout would reject.
  */
-export async function findNewsletterOffer(prisma) {
-  if (typeof prisma.coupon?.findFirst !== 'function') return null;
+export async function findNewsletterOffer(db) {
+  if (typeof db.coupon?.findFirst !== 'function') return null;
   const now = new Date();
-  const coupon = await prisma.coupon.findFirst({
+  const coupon = await db.coupon.findFirst({
     where: {
       requiresNewsletter: true,
       isActive: true,
@@ -41,8 +41,8 @@ function newsletterEmailNotice() {
   return getEmailConfig().configured ? null : 'We are not sending emails yet, so nothing will arrive for now.';
 }
 
-export function createNewsletterRouter({ getPrisma, newsletterRateLimit } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createNewsletterRouter({ getDb, newsletterRateLimit } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
   const limiter = newsletterRateLimit === false
     ? (req, res, next) => next()
@@ -56,13 +56,13 @@ export function createNewsletterRouter({ getPrisma, newsletterRateLimit } = {}) 
         throw new HttpError(400, 'Please enter a valid email address');
       }
 
-      const prisma = resolvePrisma();
-      const existing = await prisma.newsletterSubscriber.findUnique({ where: { email } });
-      const offer = await findNewsletterOffer(prisma);
+      const db = resolveDb();
+      const existing = await db.newsletterSubscriber.findUnique({ where: { email } });
+      const offer = await findNewsletterOffer(db);
 
       if (existing) {
         if (existing.status === 'unsubscribed') {
-          await prisma.newsletterSubscriber.update({
+          await db.newsletterSubscriber.update({
             where: { email },
             data: { status: 'subscribed', subscribedAt: new Date(), unsubscribedAt: null },
           });
@@ -70,11 +70,11 @@ export function createNewsletterRouter({ getPrisma, newsletterRateLimit } = {}) 
         return res.status(200).json({ data: { message: 'Thank you for subscribing to ZAEVI.', offer, emailNotice: newsletterEmailNotice() } });
       }
 
-      await prisma.newsletterSubscriber.create({
+      await db.newsletterSubscriber.create({
         data: { email, status: 'subscribed' },
       });
 
-      await notifyNewsletterWelcome(prisma, { email, offerMessage: offer?.message });
+      await notifyNewsletterWelcome(db, { email, offerMessage: offer?.message });
 
       return res.status(201).json({ data: { message: 'Thank you for subscribing to ZAEVI.', offer, emailNotice: newsletterEmailNotice() } });
     } catch (error) {
@@ -90,10 +90,10 @@ export function createNewsletterRouter({ getPrisma, newsletterRateLimit } = {}) 
         throw new HttpError(400, 'Please enter a valid email address');
       }
 
-      const prisma = resolvePrisma();
-      const existing = await prisma.newsletterSubscriber.findUnique({ where: { email } });
+      const db = resolveDb();
+      const existing = await db.newsletterSubscriber.findUnique({ where: { email } });
       if (existing && existing.status === 'subscribed') {
-        await prisma.newsletterSubscriber.update({
+        await db.newsletterSubscriber.update({
           where: { email },
           data: { status: 'unsubscribed', unsubscribedAt: new Date() },
         });

@@ -42,7 +42,7 @@ function order(over = {}) {
 }
 
 function appWith(rows) {
-  const prisma = {
+  const db = {
     order: {
       async findUnique({ where, include } = {}) {
         const found = rows.find((row) => row.reference === where.reference);
@@ -51,7 +51,7 @@ function appWith(rows) {
       },
     },
   };
-  return createApp({ prisma, logger: silentLogger, orderRateLimit: false });
+  return createApp({ db, logger: silentLogger, orderRateLimit: false });
 }
 
 const track = (app, body) => request(app).post('/api/orders/track').send(body);

@@ -1,17 +1,21 @@
 /**
- * Prisma database client module (replaces the former Mongoose connection).
+ * MongoDB connection lifecycle and the shared data client.
  *
- * Phase 0.5: connection lifecycle + health/status only. No business models.
- * The Prisma client is loaded lazily so the Express app (and the test suite)
- * can be imported without a generated client, a .env file, or a live MySQL
- * server.
+ * Nothing connects until it is first needed, so the Express app and the test suite can be
+ * imported without a database. A failed attempt is not remembered, so the next request or
+ * health check tries again.
  */
-import { createRequire } from 'node:module';
-import { resolveDatabaseUrl } from '../config/database.js';
+import dns from 'node:dns';
+import mongoose from 'mongoose';
 
-const require = createRequire(import.meta.url);
+import { resolveDatabase } from '../config/database.js';
+import { createClient } from './client.js';
+import { registerModels } from './models.js';
 
-let prismaInstance = null;
+let connection = null;
+let models = null;
+let connecting = null;
+let client = null;
 let lastConnected = false;
 let lastCheckedAt = null;
 
@@ -30,47 +34,79 @@ function withTimeout(promise, timeoutMs, operation) {
   });
 }
 
-/**
- * Return a (cached) PrismaClient instance.
- * Throws if the client has not been generated yet (`npx prisma generate`).
- */
-export function getPrismaClient() {
-  if (!prismaInstance) {
-    // The generated client lives in node_modules/@prisma/client. require()
-    // is used instead of a static import so a missing generation step or a
-    // missing DATABASE_URL cannot crash the process at module-load time.
-    const { PrismaClient } = require('@prisma/client');
-    const dbUrl = resolveDatabaseUrl();
-    process.env.DATABASE_URL = dbUrl;
-    prismaInstance = new PrismaClient({
-      datasources: { db: { url: dbUrl } },
-      log:
-        process.env.NODE_ENV === 'test'
-          ? []
-          : process.env.NODE_ENV === 'development'
-            ? ['warn', 'error']
-            : ['error'],
+/** Some networks cannot answer the lookup mongodb+srv:// links need. See .env.example. */
+function applyDnsServers(env = process.env) {
+  const servers = String(env.MONGODB_DNS_SERVERS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (servers.length > 0) dns.setServers(servers);
+}
+
+async function open() {
+  if (connection?.readyState === 1) return connection;
+  if (!connecting) {
+    connecting = (async () => {
+      const { uri, dbName } = resolveDatabase();
+      applyDnsServers();
+      const attempt = mongoose.createConnection(uri, {
+        dbName,
+        maxPoolSize: 20,
+        serverSelectionTimeoutMS: DEFAULT_CONNECT_TIMEOUT_MS,
+        bufferCommands: false,
+        autoIndex: false,
+        autoCreate: false,
+      });
+      try {
+        await attempt.asPromise();
+      } catch (error) {
+        await attempt.close().catch(() => {});
+        throw error;
+      }
+      connection = attempt;
+      models = registerModels(attempt);
+      return attempt;
+    })().finally(() => {
+      connecting = null;
     });
   }
-  return prismaInstance;
+  return connecting;
 }
 
-async function ping(prisma) {
-  await prisma.$queryRaw`SELECT 1`;
+async function ping() {
+  const active = await open();
+  await active.db.admin().ping();
+}
+
+/** The shared data client, used by every route. */
+export function getDbClient() {
+  if (!client) {
+    client = createClient({
+      getConnection: open,
+      getModels: async () => {
+        await open();
+        return models;
+      },
+      ping,
+      disconnect: disconnectDB,
+    });
+  }
+  return client;
+}
+
+/** The connected Mongoose connection and models, for setup scripts. */
+export async function getDatabaseHandles() {
+  const active = await open();
+  return { connection: active, models };
 }
 
 /**
- * Verify database connectivity. Updates the cached status used by
- * getDbStatus() and the /api/health endpoint.
+ * Verifies connectivity and updates the status reported by /api/health.
  * @param {{ timeoutMs?: number }} [options]
  */
-export async function connectDB({ timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS } = {}) {
+export async function connectDB({ timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS + 1000 } = {}) {
   try {
-    const prisma = getPrismaClient();
-    await withTimeout(ping(prisma), timeoutMs, 'Database connection');
+    await withTimeout(ping(), timeoutMs, 'Database connection');
     lastConnected = true;
     lastCheckedAt = new Date().toISOString();
-    return prisma;
+    return getDbClient();
   } catch (error) {
     lastConnected = false;
     lastCheckedAt = new Date().toISOString();
@@ -79,14 +115,13 @@ export async function connectDB({ timeoutMs = DEFAULT_CONNECT_TIMEOUT_MS } = {})
 }
 
 /**
- * Lightweight async health probe used by /api/health. Never throws.
+ * Lightweight probe used by /api/health. Never throws.
  * @param {{ timeoutMs?: number }} [options]
  * @returns {Promise<{ status: 'connected'|'disconnected', provider: string, checkedAt: string|null }>}
  */
 export async function checkDatabaseHealth({ timeoutMs = DEFAULT_HEALTH_TIMEOUT_MS } = {}) {
   try {
-    const prisma = getPrismaClient();
-    await withTimeout(ping(prisma), timeoutMs, 'Database health check');
+    await withTimeout(ping(), timeoutMs, 'Database health check');
     lastConnected = true;
   } catch {
     lastConnected = false;
@@ -96,23 +131,22 @@ export async function checkDatabaseHealth({ timeoutMs = DEFAULT_HEALTH_TIMEOUT_M
   return getDbStatus();
 }
 
-/**
- * Cached connection status from the most recent connect/health probe.
- */
+/** Cached connection status from the most recent connect or health probe. */
 export function getDbStatus() {
   return {
     status: lastConnected ? 'connected' : 'disconnected',
-    provider: 'prisma:mysql',
+    provider: 'mongoose:mongodb',
     checkedAt: lastCheckedAt,
   };
 }
 
 export async function disconnectDB() {
-  if (prismaInstance) {
-    await prismaInstance.$disconnect();
-    prismaInstance = null;
-  }
+  const active = connection;
+  connection = null;
+  models = null;
+  client = null;
   lastConnected = false;
+  if (active) await active.close();
 }
 
-export default { connectDB, checkDatabaseHealth, getDbStatus, disconnectDB, getPrismaClient };
+export default { connectDB, checkDatabaseHealth, getDbStatus, disconnectDB, getDbClient, getDatabaseHandles };

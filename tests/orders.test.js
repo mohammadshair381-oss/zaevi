@@ -10,7 +10,7 @@ function hashIdempotencyKey(key) {
   return createHash('sha256').update(key).digest('hex');
 }
 
-// HTTP-level tests for POST /api/orders using an in-memory fake Prisma client.
+// HTTP-level tests for POST /api/orders using an in-memory fake data client.
 // No database is required; the live-database counterpart lives in
 // orders.api.db.test.js.
 
@@ -40,7 +40,7 @@ function catalog() {
   ];
 }
 
-function createFakePrisma(rows, { uniqueCollisions = 0, failOrderCreate = false } = {}) {
+function createFakeDb(rows, { uniqueCollisions = 0, failOrderCreate = false } = {}) {
   const customers = new Map();
   const orders = [];
   let collisionBudget = uniqueCollisions;
@@ -55,7 +55,7 @@ function createFakePrisma(rows, { uniqueCollisions = 0, failOrderCreate = false 
       if (collisionBudget > 0) {
         collisionBudget -= 1;
         const error = new Error('Unique constraint failed on the fields: (`reference`)');
-        error.code = 'P2002';
+        error.code = 'DUPLICATE_KEY';
         error.meta = { target: 'Order_reference_key' };
         throw error;
       }
@@ -69,7 +69,7 @@ function createFakePrisma(rows, { uniqueCollisions = 0, failOrderCreate = false 
         createdAt: new Date(),
         ...item,
       }));
-      // Store the idempotency key as-is (the route already hashes it before passing to Prisma)
+      // Store the idempotency key as-is (the route already hashes it before passing to database)
       const row = {
         id,
         status: 'pending',
@@ -157,9 +157,9 @@ function createFakePrisma(rows, { uniqueCollisions = 0, failOrderCreate = false 
 
 const silentLogger = { log() {}, error() {} };
 
-function buildApp(prismaOptions, appOptions = {}) {
-  const prisma = createFakePrisma(catalog(), prismaOptions);
-  return { app: createApp({ prisma, logger: silentLogger, ...appOptions }), prisma };
+function buildApp(dbOptions, appOptions = {}) {
+  const db = createFakeDb(catalog(), dbOptions);
+  return { app: createApp({ db, logger: silentLogger, ...appOptions }), db };
 }
 
 function validBody(overrides = {}) {
@@ -185,7 +185,7 @@ function postOrder(app, body, headers = validHeaders()) {
 }
 
 test('POST /api/orders persists a valid guest order and hides internal ids', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const res = await postOrder(app, validBody());
 
   assert.equal(res.status, 201);
@@ -209,9 +209,9 @@ test('POST /api/orders persists a valid guest order and hides internal ids', asy
     lineTotalMinor: 3780000,
   });
 
-  assert.equal(prisma.__orders.length, 1);
-  assert.equal(prisma.__orders[0].contactEmail, 'aya.el@example.com');
-  assert.equal(prisma.__orders[0].shippingCountry, 'IN');
+  assert.equal(db.__orders.length, 1);
+  assert.equal(db.__orders[0].contactEmail, 'aya.el@example.com');
+  assert.equal(db.__orders[0].shippingCountry, 'IN');
 });
 
 test('POST /api/orders ignores client-supplied prices and names', async () => {
@@ -259,14 +259,14 @@ test('POST /api/orders sums multiple items in integer paise', async () => {
 });
 
 test('POST /api/orders performs all writes inside a single transaction', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const res = await postOrder(app, validBody());
 
   assert.equal(res.status, 201);
-  assert.equal(prisma.__calls.transactions, 1);
-  assert.equal(prisma.__calls.orderCreate, 1);
-  assert.equal(prisma.__calls.customerUpsert, 1);
-  assert.equal(prisma.__calls.writesOutsideTx, 0);
+  assert.equal(db.__calls.transactions, 1);
+  assert.equal(db.__calls.orderCreate, 1);
+  assert.equal(db.__calls.customerUpsert, 1);
+  assert.equal(db.__calls.writesOutsideTx, 0);
 });
 
 test('POST /api/orders rejects invalid payloads with 400 and no stack', async () => {
@@ -330,7 +330,7 @@ test('POST /api/orders rejects malformed JSON and non-object bodies', async () =
 });
 
 test('POST /api/orders rolls back partial writes and sanitizes 500s in production', async () => {
-  const { app, prisma } = buildApp({ failOrderCreate: true });
+  const { app, db } = buildApp({ failOrderCreate: true });
   const previous = process.env.NODE_ENV;
   process.env.NODE_ENV = 'production';
   try {
@@ -339,29 +339,29 @@ test('POST /api/orders rolls back partial writes and sanitizes 500s in productio
     assert.equal(res.body.error.status, 500);
     assert.equal(res.body.error.message, 'Internal Server Error');
     assert.equal(res.body.error.stack, undefined);
-    assert.equal(prisma.__orders.length, 0, 'no order may survive a failed transaction');
-    assert.equal(prisma.__customers.size, 0, 'customer writes must roll back with the order');
+    assert.equal(db.__orders.length, 0, 'no order may survive a failed transaction');
+    assert.equal(db.__customers.size, 0, 'customer writes must roll back with the order');
   } finally {
     process.env.NODE_ENV = previous;
   }
 });
 
 test('POST /api/orders retries on a reference collision and then succeeds', async () => {
-  const { app, prisma } = buildApp({ uniqueCollisions: 1 });
+  const { app, db } = buildApp({ uniqueCollisions: 1 });
   const res = await postOrder(app, validBody());
 
   assert.equal(res.status, 201);
-  assert.equal(prisma.__calls.orderCreate, 2, 'one collision then one success');
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__calls.orderCreate, 2, 'one collision then one success');
+  assert.equal(db.__orders.length, 1);
 });
 
 test('POST /api/orders fails safely when references keep colliding', async () => {
-  const { app, prisma } = buildApp({ uniqueCollisions: 99 });
+  const { app, db } = buildApp({ uniqueCollisions: 99 });
   const res = await postOrder(app, validBody());
 
   assert.equal(res.status, 500);
-  assert.equal(prisma.__calls.orderCreate, MAX_REFERENCE_ATTEMPTS);
-  assert.equal(prisma.__orders.length, 0);
+  assert.equal(db.__calls.orderCreate, MAX_REFERENCE_ATTEMPTS);
+  assert.equal(db.__orders.length, 0);
 });
 
 test('POST /api/orders requires Idempotency-Key header', async () => {
@@ -381,20 +381,20 @@ test('POST /api/orders rejects malformed Idempotency-Key', async () => {
 });
 
 test('POST /api/orders with new key creates order and stores idempotency metadata', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
   const res = await postOrder(app, validBody(), { 'Idempotency-Key': key });
 
   assert.equal(res.status, 201);
   assert.ok(res.body.data.reference);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
   // The stored key is now the SHA-256 hash of the provided key
-  assert.equal(prisma.__orders[0].idempotencyKey, hashIdempotencyKey(key));
-  assert.ok(prisma.__orders[0].idempotencyHash);
+  assert.equal(db.__orders[0].idempotencyKey, hashIdempotencyKey(key));
+  assert.ok(db.__orders[0].idempotencyHash);
 });
 
 test('POST /api/orders with same key and equivalent payload returns existing order (200)', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
 
   const first = await postOrder(app, validBody(), { 'Idempotency-Key': key });
@@ -406,11 +406,11 @@ test('POST /api/orders with same key and equivalent payload returns existing ord
   assert.equal(second.body.data.reference, firstRef);
 
   // No duplicate order created
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('POST /api/orders with same key but different payload returns 409', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
 
   await postOrder(app, validBody(), { 'Idempotency-Key': key });
@@ -420,11 +420,11 @@ test('POST /api/orders with same key but different payload returns 409', async (
 
   assert.equal(res.status, 409);
   assert.match(res.body.error.message, /different checkout details/);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('POST /api/orders with same key but different items returns 409', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
 
   await postOrder(app, validBody(), { 'Idempotency-Key': key });
@@ -432,11 +432,11 @@ test('POST /api/orders with same key but different items returns 409', async () 
   const res = await postOrder(app, validBody({ items: [{ productId: 'ZV001', size: 'M', quantity: 2 }] }), { 'Idempotency-Key': key });
 
   assert.equal(res.status, 409);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('POST /api/orders with same key but different quantity returns 409', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
 
   await postOrder(app, validBody(), { 'Idempotency-Key': key });
@@ -444,11 +444,11 @@ test('POST /api/orders with same key but different quantity returns 409', async 
   const res = await postOrder(app, validBody({ items: [{ productId: 'ZV001', size: 'S', quantity: 3 }] }), { 'Idempotency-Key': key });
 
   assert.equal(res.status, 409);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('POST /api/orders ignores client-supplied prices in idempotency comparison', async () => {
-  const { app, prisma } = buildApp();
+  const { app, db } = buildApp();
   const key = 'valid-idempotency-key-1234567890123456';
 
   await postOrder(app, validBody({ items: [{ productId: 'ZV001', size: 'S', quantity: 2, price: 1 }] }), { 'Idempotency-Key': key });
@@ -457,7 +457,7 @@ test('POST /api/orders ignores client-supplied prices in idempotency comparison'
   const res = await postOrder(app, validBody({ items: [{ productId: 'ZV001', size: 'S', quantity: 2, price: 999 }] }), { 'Idempotency-Key': key });
 
   assert.equal(res.status, 200);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -470,16 +470,16 @@ test('POST /api/orders ignores client-supplied prices in idempotency comparison'
 // ---------------------------------------------------------------------------
 
 test('POST /api/orders allows requests up to the configured limit', async () => {
-  const { app, prisma } = buildApp({}, { orderRateLimit: { max: 3, windowMs: 60000 } });
+  const { app, db } = buildApp({}, { orderRateLimit: { max: 3, windowMs: 60000 } });
   for (let i = 0; i < 3; i += 1) {
     const res = await postOrder(app, validBody(), { 'Idempotency-Key': `below-limit-key-${i}-123456789012` });
     assert.equal(res.status, 201, `request ${i + 1} should succeed`);
   }
-  assert.equal(prisma.__orders.length, 3);
+  assert.equal(db.__orders.length, 3);
 });
 
 test('POST /api/orders returns 429 in the standard error format once exceeded', async () => {
-  const { app, prisma } = buildApp({}, { orderRateLimit: { max: 2, windowMs: 60000 } });
+  const { app, db } = buildApp({}, { orderRateLimit: { max: 2, windowMs: 60000 } });
 
   const first = await postOrder(app, validBody(), { 'Idempotency-Key': 'over-limit-key-a-123456789012' });
   const second = await postOrder(app, validBody(), { 'Idempotency-Key': 'over-limit-key-b-123456789012' });
@@ -491,7 +491,7 @@ test('POST /api/orders returns 429 in the standard error format once exceeded', 
   assert.equal(third.body.error.status, 429);
   assert.match(third.body.error.message, /too many/i);
   assert.equal(third.body.error.stack, undefined, '429 must not leak a stack');
-  assert.equal(prisma.__orders.length, 2, 'the blocked request must not create an order');
+  assert.equal(db.__orders.length, 2, 'the blocked request must not create an order');
 });
 
 test('rate-limit responses carry accurate headers and Retry-After', async () => {
@@ -511,18 +511,18 @@ test('rate-limit responses carry accurate headers and Retry-After', async () => 
 });
 
 test('a rate-limited request is blocked before idempotency or order logic', async () => {
-  const { app, prisma } = buildApp({}, { orderRateLimit: { max: 1, windowMs: 60000 } });
+  const { app, db } = buildApp({}, { orderRateLimit: { max: 1, windowMs: 60000 } });
   const key = 'blocked-idempotency-key-1234567890';
 
   const first = await postOrder(app, validBody(), { 'Idempotency-Key': key });
   assert.equal(first.status, 201);
-  assert.equal(prisma.__calls.transactions, 1);
+  assert.equal(db.__calls.transactions, 1);
 
   // Same key would normally replay with 200; the limiter must short-circuit first.
   const blocked = await postOrder(app, validBody(), { 'Idempotency-Key': key });
   assert.equal(blocked.status, 429);
-  assert.equal(prisma.__orders.length, 1, 'no order created by the blocked request');
-  assert.equal(prisma.__calls.transactions, 1, 'no second transaction was attempted');
+  assert.equal(db.__orders.length, 1, 'no order created by the blocked request');
+  assert.equal(db.__calls.transactions, 1, 'no second transaction was attempted');
 });
 
 test('order rate limiting does not affect unrelated endpoints', async () => {
@@ -570,7 +570,7 @@ test('validation and server-side pricing are unchanged under the limiter', async
 });
 
 test('idempotency replay still works while under the order rate limit', async () => {
-  const { app, prisma } = buildApp({}, { orderRateLimit: { max: 5, windowMs: 60000 } });
+  const { app, db } = buildApp({}, { orderRateLimit: { max: 5, windowMs: 60000 } });
   const key = 'idempotency-under-limit-key-1234567';
 
   const first = await postOrder(app, validBody(), { 'Idempotency-Key': key });
@@ -579,14 +579,14 @@ test('idempotency replay still works while under the order rate limit', async ()
   const replay = await postOrder(app, validBody(), { 'Idempotency-Key': key });
   assert.equal(replay.status, 200);
   assert.equal(replay.body.data.reference, first.body.data.reference);
-  assert.equal(prisma.__orders.length, 1);
+  assert.equal(db.__orders.length, 1);
 });
 
 test('orderRateLimit: false disables the limiter', async () => {
-  const { app, prisma } = buildApp({}, { orderRateLimit: false });
+  const { app, db } = buildApp({}, { orderRateLimit: false });
   for (let i = 0; i < 40; i += 1) {
     const res = await postOrder(app, validBody(), { 'Idempotency-Key': `disabled-key-${i}-123456789012345` });
     assert.equal(res.status, 201);
   }
-  assert.equal(prisma.__orders.length, 40);
+  assert.equal(db.__orders.length, 40);
 });

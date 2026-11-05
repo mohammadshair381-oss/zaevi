@@ -5,12 +5,12 @@ import request from 'supertest';
 
 import { createApp } from '../src/app.js';
 
-// Requiring the Prisma Client implicitly loads the project `.env`, which would
+// Requiring the database Client implicitly loads the project `.env`, which would
 // let the "disconnected" health assertion below reach a live database on a
 // developer machine. Pin the datasource to an unreachable host so this test
-// deterministically exercises the disconnected path. (Prisma's dotenv loader
+// deterministically exercises the disconnected path. (database's dotenv loader
 // does not override an already-defined variable.)
-process.env.DATABASE_URL = 'mysql://root:root@127.0.0.1:1/zaevi';
+process.env.MONGODB_URI = 'mongodb://root:root@127.0.0.1:1/zaevi';
 
 const app = createApp();
 
@@ -21,7 +21,7 @@ test('GET /api/health reports degraded with 503 when the database is disconnecte
   assert.equal(res.body.status, 'degraded');
   assert.equal(res.body.service, 'zaevi-backend');
   assert.equal(res.body.database.status, 'disconnected');
-  assert.equal(res.body.database.provider, 'prisma:mysql');
+  assert.equal(res.body.database.provider, 'mongoose:mongodb');
   assert.ok(res.body.timestamp);
   assert.equal(typeof res.body.uptime, "number");
 });

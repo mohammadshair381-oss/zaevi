@@ -11,13 +11,13 @@
  *                     - public production-status lookup by order reference and
  *                       checkout email (rate limited; no PII beyond the order).
  *
- * Like the product router this is a factory taking a `getPrisma()` resolver so
+ * Like the product router this is a factory taking a `getDb()` resolver so
  * tests can inject an in-memory client. No authentication or payment logic
  * lives here beyond the session gate; an order is *placed*, not paid.
  */
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -42,12 +42,12 @@ import {
 /** How many times to regenerate a reference before giving up. */
 export const MAX_REFERENCE_ATTEMPTS = 5;
 
-/** True for a Prisma unique-constraint violation (`P2002`). */
+/** True for a database unique-constraint violation (`duplicate-key`). */
 function isUniqueViolation(error) {
-  return Boolean(error) && error.code === 'P2002';
+  return Boolean(error) && error.code === 'DUPLICATE_KEY';
 }
 
-/** Check if a P2002 error is for the idempotencyKey unique constraint. */
+/** Check if a duplicate-key error is for the idempotencyKey unique constraint. */
 function isIdempotencyKeyCollision(error) {
   return isUniqueViolation(error) && error.meta?.target?.includes('idempotencyKey');
 }
@@ -65,8 +65,8 @@ async function upsertCustomer(tx, draft) {
   return tx.customer.upsert({ where: { email: draft.email }, create, update });
 }
 
-export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOrders = false } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createOrdersRouter({ getDb, orderRateLimit, requireAuthForOrders = false } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   // Order creation is rate limited per client IP (see rate-limit.js). Applied
@@ -94,8 +94,8 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
   router.post('/orders/track', orderLimiter, async (req, res, next) => {
     try {
       const lookup = parseOrderTrackingRequest(req.body);
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findUnique({
+      const db = resolveDb();
+      const order = await db.order.findUnique({
         where: { reference: lookup.reference },
         include: { items: true },
       });
@@ -122,7 +122,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
       // Hash the key for secure at-rest storage. The database stores only the hash.
       const idempotencyKeyHash = hashIdempotencyKey(rawIdempotencyKey);
       const draft = parseOrderRequest(req.body);
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
       // The verified session identity (never client-supplied). Used for address
       // ownership checks and for linking the order to the signed-in customer.
@@ -137,7 +137,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
         if (!sessionCustomerId) {
           throw new HttpError(401, 'Authentication required');
         }
-        const savedAddress = await prisma.address.findFirst({
+        const savedAddress = await db.address.findFirst({
           where: { id: draft.addressId, customerId: sessionCustomerId },
         });
         if (!savedAddress) {
@@ -154,14 +154,14 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
       // Fast path: check for existing order with this idempotency key hash.
       // For backward compatibility with pre-migration records that store the raw key,
       // also check by raw key if the hash lookup returns nothing.
-      let existing = await prisma.order.findUnique({
+      let existing = await db.order.findUnique({
         where: { idempotencyKey: idempotencyKeyHash },
         include: { items: true },
       });
 
       if (!existing) {
         // Fallback: check if a pre-migration record exists with the raw key.
-        existing = await prisma.order.findUnique({
+        existing = await db.order.findUnique({
           where: { idempotencyKey: rawIdempotencyKey },
           include: { items: true },
         });
@@ -170,7 +170,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
       if (existing) {
         // If we found a record with the raw key, migrate it to store the hash.
         if (existing.idempotencyKey === rawIdempotencyKey) {
-          await prisma.order.update({
+          await db.order.update({
             where: { id: existing.id },
             data: { idempotencyKey: idempotencyKeyHash },
           });
@@ -186,7 +186,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
 
       // New key: load products, validate availability/sizes, calculate prices.
       const productIds = [...new Set(draft.items.map((item) => item.productId))];
-      const products = await prisma.product.findMany({
+      const products = await db.product.findMany({
         where: { id: { in: productIds } },
         include: { sizes: true },
       });
@@ -195,10 +195,10 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
       // Optional coupon validation and discount calculation
       let appliedCoupon = null;
       let discountMinor = 0;
-      if (draft.couponCode && typeof prisma.coupon?.findUnique === 'function') {
-        const c = await prisma.coupon.findUnique({ where: { code: draft.couponCode.toUpperCase() } });
+      if (draft.couponCode && typeof db.coupon?.findUnique === 'function') {
+        const c = await db.coupon.findUnique({ where: { code: draft.couponCode.toUpperCase() } });
         const { assertCouponUsable, calculateCouponDiscount } = await import('./coupons.js');
-        await assertCouponUsable(prisma, c, {
+        await assertCouponUsable(db, c, {
           subtotalMinor: built.subtotalMinor,
           email: draft.email,
           customerId: sessionCustomerId ?? null,
@@ -213,7 +213,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
       for (let attempt = 0; attempt < MAX_REFERENCE_ATTEMPTS && !order; attempt += 1) {
         const reference = generateOrderReference();
         try {
-          order = await prisma.$transaction(async (tx) => {
+          order = await db.$transaction(async (tx) => {
             // Link the order to the verified session customer when signed in;
             // guests still key off the normalized contact email.
             const customerId = sessionCustomerId ?? (await upsertCustomer(tx, draft)).id;
@@ -282,7 +282,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
         } catch (error) {
           if (isIdempotencyKeyCollision(error)) {
             // Lost race on idempotency key — winner already committed; fetch and compare hash.
-            const winner = await prisma.order.findUnique({
+            const winner = await db.order.findUnique({
               where: { idempotencyKey: idempotencyKeyHash },
               include: { items: true },
             });
@@ -305,7 +305,7 @@ export function createOrdersRouter({ getPrisma, orderRateLimit, requireAuthForOr
 
       try {
         const { notifyOrderConfirmed } = await import('../services/notification.js');
-        await notifyOrderConfirmed(prisma, { order });
+        await notifyOrderConfirmed(db, { order });
       } catch (e) {
         // notification failures never disrupt the order response
       }

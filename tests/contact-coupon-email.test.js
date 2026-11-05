@@ -127,7 +127,7 @@ test('email: a refused connection is reported as failed, never thrown', async ()
   assert.ok(result.error);
 });
 
-function contactPrisma() {
+function contactDb() {
   const rows = [];
   return {
     rows,
@@ -140,37 +140,37 @@ function contactPrisma() {
 const validMessage = { name: 'Asha', email: 'Asha@Example.com', subject: 'Order support', message: 'Where is my order?', order: 'ZV-1' };
 
 test('contact: stores a valid message and returns no invented case number', async () => {
-  const prisma = contactPrisma();
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const db = contactDb();
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   const res = await request(app).post('/api/contact').send(validMessage);
   assert.equal(res.status, 201);
   assert.deepEqual(res.body, { data: { received: true } });
-  assert.equal(prisma.rows.length, 1);
-  assert.equal(prisma.rows[0].email, 'asha@example.com');
-  assert.equal(prisma.rows[0].orderReference, 'ZV-1');
+  assert.equal(db.rows.length, 1);
+  assert.equal(db.rows[0].email, 'asha@example.com');
+  assert.equal(db.rows[0].orderReference, 'ZV-1');
 });
 
 test('contact: rejects invalid input and stores nothing', async () => {
-  const prisma = contactPrisma();
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const db = contactDb();
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   for (const bad of [{ ...validMessage, email: 'nope' }, { ...validMessage, name: ' ' }, { ...validMessage, subject: 'Other' }, { ...validMessage, message: 'hi' }]) {
     const res = await request(app).post('/api/contact').send(bad);
     assert.equal(res.status, 400);
   }
-  assert.equal(prisma.rows.length, 0);
+  assert.equal(db.rows.length, 0);
 });
 
 test('contact: the honeypot field is not stored', async () => {
-  const prisma = contactPrisma();
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const db = contactDb();
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   const res = await request(app).post('/api/contact').send({ ...validMessage, website: 'http://spam.example' });
   assert.equal(res.status, 201);
-  assert.equal(prisma.rows.length, 0);
+  assert.equal(db.rows.length, 0);
 });
 
 test('contact: a database failure is an error, not a false success', async () => {
-  const prisma = { contactMessage: { create: async () => { throw new Error('db down'); } } };
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const db = { contactMessage: { create: async () => { throw new Error('db down'); } } };
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   const res = await request(app).post('/api/contact').send(validMessage);
   assert.equal(res.status, 500);
 });
@@ -181,75 +181,75 @@ test('contact: line breaks cannot reach email headers', () => {
 });
 
 test('contact: notification outcome is recorded for sent, failed and unconfigured', async () => {
-  const prisma = contactPrisma();
-  const row = await prisma.contactMessage.create({ data: parseContactMessage(validMessage) });
+  const db = contactDb();
+  const row = await db.contactMessage.create({ data: parseContactMessage(validMessage) });
 
-  await deliverContactNotification(prisma, row, { env: {} });
-  assert.equal(prisma.rows[0].notifyStatus, 'not_configured');
+  await deliverContactNotification(db, row, { env: {} });
+  assert.equal(db.rows[0].notifyStatus, 'not_configured');
 
   const smtp = await startSmtpServer();
-  await deliverContactNotification(prisma, row, { env: smtpEnv(smtp.port) });
-  assert.equal(prisma.rows[0].notifyStatus, 'sent');
-  assert.equal(prisma.rows[0].notifyError, null);
+  await deliverContactNotification(db, row, { env: smtpEnv(smtp.port) });
+  assert.equal(db.rows[0].notifyStatus, 'sent');
+  assert.equal(db.rows[0].notifyError, null);
   assert.match(smtp.messages[0], /Reply-To: asha@example.com/);
   const { port } = smtp;
   await smtp.close();
 
-  await deliverContactNotification(prisma, row, { env: smtpEnv(port) });
-  assert.equal(prisma.rows[0].notifyStatus, 'failed');
-  assert.ok(prisma.rows[0].notifyError);
+  await deliverContactNotification(db, row, { env: smtpEnv(port) });
+  assert.equal(db.rows[0].notifyStatus, 'failed');
+  assert.ok(db.rows[0].notifyError);
 });
 
 test('notifications: stored first, with the real outcome and no fake recipient', async () => {
   const rows = [];
-  const prisma = {
+  const db = {
     notification: {
       create: async ({ data }) => { const row = { id: rows.length + 1, ...data }; rows.push(row); return { ...row }; },
       update: async ({ where, data }) => Object.assign(rows.find((r) => r.id === where.id), data),
       findUnique: async ({ where }) => rows.find((r) => r.id === where.id) || null,
     },
   };
-  assert.equal(await recordNotification(prisma, { type: 'x', subject: 's', content: 'c' }), null);
-  const row = await recordNotification(prisma, { recipientEmail: 'a@example.com', type: 'x', subject: 's', content: 'c' });
+  assert.equal(await recordNotification(db, { type: 'x', subject: 's', content: 'c' }), null);
+  const row = await recordNotification(db, { recipientEmail: 'a@example.com', type: 'x', subject: 's', content: 'c' });
   assert.equal(row.status, 'pending');
-  const retried = await retryNotification(prisma, row.id);
+  const retried = await retryNotification(db, row.id);
   assert.notEqual(retried.status, 'sent');
-  assert.equal(await retryNotification(prisma, 999), null);
+  assert.equal(await retryNotification(db, 999), null);
 });
 
 const ATELIER10 = { id: 1, code: 'ATELIER10', isActive: true, discountType: 'percentage', discountValue: 10, usageLimit: 1000, usedCount: 0, perCustomerLimit: 1, requiresNewsletter: true, expiresAt: new Date('2027-11-03T18:29:59Z') };
-function couponPrisma({ subscriber = { status: 'subscribed' }, usage = 0 } = {}) {
+function couponDb({ subscriber = { status: 'subscribed' }, usage = 0 } = {}) {
   return {
     newsletterSubscriber: { findUnique: async () => subscriber },
     couponUsage: { count: async () => usage },
     coupon: { findFirst: async () => ATELIER10 },
   };
 }
-const usable = (prisma, coupon = ATELIER10, extra = {}) => assertCouponUsable(prisma, coupon, { subtotalMinor: 100000, email: 'a@example.com', customerId: 7, ...extra });
+const usable = (db, coupon = ATELIER10, extra = {}) => assertCouponUsable(db, coupon, { subtotalMinor: 100000, email: 'a@example.com', customerId: 7, ...extra });
 
 test('ATELIER10: a subscriber who has not used it is accepted', async () => {
-  await usable(couponPrisma());
+  await usable(couponDb());
 });
 
 test('ATELIER10: only for current newsletter subscribers', async () => {
-  await assert.rejects(usable(couponPrisma({ subscriber: null })), /newsletter subscribers/);
-  await assert.rejects(usable(couponPrisma({ subscriber: { status: 'unsubscribed' } })), /newsletter subscribers/);
-  await assert.rejects(usable(couponPrisma(), ATELIER10, { email: '' }), /newsletter subscribers/);
+  await assert.rejects(usable(couponDb({ subscriber: null })), /newsletter subscribers/);
+  await assert.rejects(usable(couponDb({ subscriber: { status: 'unsubscribed' } })), /newsletter subscribers/);
+  await assert.rejects(usable(couponDb(), ATELIER10, { email: '' }), /newsletter subscribers/);
 });
 
 test('ATELIER10: one use per customer', async () => {
-  await assert.rejects(usable(couponPrisma({ usage: 1 })), /already redeemed/);
+  await assert.rejects(usable(couponDb({ usage: 1 })), /already redeemed/);
 });
 
 test('ATELIER10: expiry, total limit and active flag are enforced', async () => {
-  await assert.rejects(usable(couponPrisma(), { ...ATELIER10, expiresAt: new Date('2020-01-01') }), /expired/);
-  await assert.rejects(usable(couponPrisma(), { ...ATELIER10, usedCount: 1000 }), /maximum usage limit/);
-  await assert.rejects(usable(couponPrisma(), { ...ATELIER10, isActive: false }), /Invalid or expired/);
-  await assert.rejects(usable(couponPrisma(), null), /Invalid or expired/);
+  await assert.rejects(usable(couponDb(), { ...ATELIER10, expiresAt: new Date('2020-01-01') }), /expired/);
+  await assert.rejects(usable(couponDb(), { ...ATELIER10, usedCount: 1000 }), /maximum usage limit/);
+  await assert.rejects(usable(couponDb(), { ...ATELIER10, isActive: false }), /Invalid or expired/);
+  await assert.rejects(usable(couponDb(), null), /Invalid or expired/);
 });
 
 test('newsletter offer text comes from the coupon, and is withheld when used up', async () => {
-  const offer = await findNewsletterOffer(couponPrisma());
+  const offer = await findNewsletterOffer(couponDb());
   assert.equal(offer.code, 'ATELIER10');
   assert.equal(offer.percent, 10);
   assert.match(offer.message, /ATELIER10.*10% off one order.*3 November 2027/);
@@ -258,11 +258,11 @@ test('newsletter offer text comes from the coupon, and is withheld when used up'
 });
 
 test('newsletter subscribe returns the offer', async () => {
-  const prisma = {
-    ...couponPrisma(),
+  const db = {
+    ...couponDb(),
     newsletterSubscriber: { findUnique: async () => null, create: async () => ({ id: 1 }) },
   };
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   const res = await request(app).post('/api/newsletter/subscribe').send({ email: 'new@example.com' });
   assert.equal(res.status, 201);
   assert.equal(res.body.data.offer.code, 'ATELIER10');
@@ -279,7 +279,7 @@ test('payments: unconfigured Razorpay reports not configured and exposes no key'
   delete process.env.RAZORPAY_KEY_ID;
   delete process.env.RAZORPAY_KEY_SECRET;
   try {
-    const app = createApp({ prisma: {}, logger: silentLogger, sessionSecret: SESSION_SECRET });
+    const app = createApp({ db: {}, logger: silentLogger, sessionSecret: SESSION_SECRET });
     const res = await request(app).get('/api/payments/config');
     assert.deepEqual(res.body.data, { configured: false, keyId: null });
   } finally {
@@ -292,11 +292,11 @@ test('payments: webhook rejects bad signatures, including wrong lengths, and app
   const before = process.env.RAZORPAY_WEBHOOK_SECRET;
   process.env.RAZORPAY_WEBHOOK_SECRET = 'unit-test-only-secret';
   const updates = [];
-  const prisma = {
+  const db = {
     paymentEvent: { findUnique: async () => null, create: async () => ({}) },
     payment: { updateMany: async (args) => { updates.push(args); return { count: 1 }; } },
   };
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET });
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET });
   const body = JSON.stringify({ id: 'evt_1', event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1', order_id: 'order_1', method: 'upi' } } } });
   const post = (signature) => {
     const r = request(app).post('/api/payments/webhook').set('Content-Type', 'application/json');

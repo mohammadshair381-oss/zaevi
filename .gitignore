@@ -38,11 +38,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-/src/generated/prisma
 
-# Database dumps and archives can hold customer data. Prisma migrations stay tracked.
+# Database dumps and archives can hold customer data.
 *.sql
-!prisma/migrations/**/migration.sql
 *.dump
 *.zip
 

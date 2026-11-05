@@ -8,7 +8,7 @@
  */
 import crypto from 'node:crypto';
 
-import { DEVELOPMENT_DATABASE, databaseNameOf, resolveDatabaseUrl } from '../config/database.js';
+import { DEVELOPMENT_DATABASE, resolveDatabaseName } from '../config/database.js';
 import { getEmailConfig, sendEmail } from './email.js';
 
 export const OTP_PURPOSES = Object.freeze({ SIGNUP: 'signup', LOGIN: 'login', RESET: 'reset' });
@@ -31,7 +31,7 @@ export const newChallenge = () => crypto.randomBytes(32).toString('hex');
 function isDevelopmentDatabase(env) {
   if (env.NODE_ENV !== 'development') return false;
   try {
-    return databaseNameOf(resolveDatabaseUrl(env)) === DEVELOPMENT_DATABASE;
+    return resolveDatabaseName(env) === DEVELOPMENT_DATABASE;
   } catch {
     return false;
   }
@@ -69,11 +69,11 @@ export async function sendOtpEmail({ email, code, purpose }, { env = process.env
 }
 
 /** Creates a code, replacing any earlier one for the same person and purpose, and sends it. */
-export async function issueOtp(prisma, { customerId, email, purpose, challenge = newChallenge() }, { deliver = sendOtpEmail } = {}) {
+export async function issueOtp(db, { customerId, email, purpose, challenge = newChallenge() }, { deliver = sendOtpEmail } = {}) {
   const now = new Date();
   const code = newCode();
-  await prisma.emailOtp.deleteMany({ where: { customerId, purpose } });
-  const row = await prisma.emailOtp.create({
+  await db.emailOtp.deleteMany({ where: { customerId, purpose } });
+  const row = await db.emailOtp.create({
     data: {
       customerId,
       purpose,
@@ -86,7 +86,7 @@ export async function issueOtp(prisma, { customerId, email, purpose, challenge =
   try {
     await deliver({ email, code, purpose });
   } catch (error) {
-    await prisma.emailOtp.deleteMany({ where: { id: row.id } });
+    await db.emailOtp.deleteMany({ where: { id: row.id } });
     throw error;
   }
   return { challenge };
@@ -97,17 +97,17 @@ export async function issueOtp(prisma, { customerId, email, purpose, challenge =
  * the same moment cannot exceed the limit or use one code twice.
  * @returns {{status:'ok',record:object}|{status:'wrong',attemptsLeft:number}|{status:'invalid'}}
  */
-export async function checkOtp(prisma, { challenge, code, purposes }) {
+export async function checkOtp(db, { challenge, code, purposes }) {
   const token = String(challenge ?? '');
   const guess = String(code ?? '').trim();
   if (!/^[a-f0-9]{64}$/.test(token)) return { status: 'invalid' };
 
-  const record = await prisma.emailOtp.findUnique({ where: { challengeHash: sha256(token) } });
+  const record = await db.emailOtp.findUnique({ where: { challengeHash: sha256(token) } });
   const now = new Date();
   if (!record || !purposes.includes(record.purpose) || record.consumedAt || record.expiresAt <= now) return { status: 'invalid' };
 
   const attemptsLeft = OTP_MAX_ATTEMPTS - record.attempts - 1;
-  const counted = await prisma.emailOtp.updateMany({
+  const counted = await db.emailOtp.updateMany({
     where: { id: record.id, consumedAt: null, expiresAt: { gt: now }, attempts: { lt: OTP_MAX_ATTEMPTS } },
     data: { attempts: { increment: 1 } },
   });
@@ -119,7 +119,7 @@ export async function checkOtp(prisma, { challenge, code, purposes }) {
     return attemptsLeft > 0 ? { status: 'wrong', attemptsLeft } : { status: 'invalid' };
   }
 
-  const consumed = await prisma.emailOtp.updateMany({ where: { id: record.id, consumedAt: null }, data: { consumedAt: now } });
+  const consumed = await db.emailOtp.updateMany({ where: { id: record.id, consumedAt: null }, data: { consumedAt: now } });
   return consumed.count === 1 ? { status: 'ok', record } : { status: 'invalid' };
 }
 
@@ -127,10 +127,10 @@ export async function checkOtp(prisma, { challenge, code, purposes }) {
  * Sends a new code for an active request.
  * @returns {{status:'sent'}|{status:'missing'}|{status:'expired'}|{status:'wait',seconds:number}|{status:'limit'}}
  */
-export async function resendOtp(prisma, { challenge, getEmail }, { deliver = sendOtpEmail } = {}) {
+export async function resendOtp(db, { challenge, getEmail }, { deliver = sendOtpEmail } = {}) {
   const token = String(challenge ?? '');
   if (!/^[a-f0-9]{64}$/.test(token)) return { status: 'missing' };
-  const record = await prisma.emailOtp.findUnique({ where: { challengeHash: sha256(token) } });
+  const record = await db.emailOtp.findUnique({ where: { challengeHash: sha256(token) } });
   if (!record) return { status: 'missing' };
   if (record.consumedAt) return { status: 'expired' };
 
@@ -140,7 +140,7 @@ export async function resendOtp(prisma, { challenge, getEmail }, { deliver = sen
   if (record.sendCount >= OTP_MAX_SENDS) return { status: 'limit' };
 
   const code = newCode();
-  await prisma.emailOtp.update({
+  await db.emailOtp.update({
     where: { id: record.id },
     data: {
       codeHash: hashCode(token, code),

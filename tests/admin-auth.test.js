@@ -5,7 +5,7 @@ import { createApp } from '../src/app.js';
 import { hashPassword, verifyPassword } from '../src/models/auth.js';
 
 /**
- * Phase A admin authorization tests against an in-memory prisma stub and the
+ * Phase A admin authorization tests against an in-memory db stub and the
  * REAL middleware stack (sessions, CSRF issuance, static blocking all live).
  *
  * Policy under test:
@@ -19,21 +19,21 @@ import { hashPassword, verifyPassword } from '../src/models/auth.js';
 const REGISTRATION_MIN = 12;
 
 /**
- * In-memory prisma fake covering the routes this test file touches.
+ * In-memory db fake covering the routes this test file touches.
  * Customers carry `role`; orders/products back the admin listings.
  */
-function buildPrismaStub() {
+function buildDbStub() {
   const customers = new Map(); // email → row
   let customerSeq = 0;
   const orders = [];
   const products = [];
 
-  const prisma = {
+  const db = {
     customer: {
       async create({ data }) {
         if (customers.has(data.email)) {
           const error = new Error('Unique constraint failed on the fields: (`email`)');
-          error.code = 'P2002';
+          error.code = 'DUPLICATE_KEY';
           error.meta = { target: 'Customer_email_key' };
           throw error;
         }
@@ -152,17 +152,17 @@ function buildPrismaStub() {
     },
   };
 
-  return { prisma, helpers, customers };
+  return { db, helpers, customers };
 }
 
 /** Build the app and sign in; returns { app, jar, email } helper. */
 async function bootWithUser({ email, password, role = 'customer' } = {}) {
-  const harness = buildPrismaStub();
+  const harness = buildDbStub();
   const passwordHash = email ? await hashPassword(password) : null;
   if (email) harness.helpers.addCustomer(email, role, passwordHash);
 
   const app = createApp({
-    prisma: harness.prisma,
+    db: harness.db,
     sessionSecret: 'phase-a-admin-test-secret-32-chars!!',
     requireAuthForOrders: false,
   });

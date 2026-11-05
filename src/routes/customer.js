@@ -20,7 +20,7 @@
 
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -61,9 +61,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * Returns and replacements close 14 days after delivery, matching the published policy.
  * An order with no recorded delivery date is left open rather than wrongly refused.
  */
-export async function assertWithinReturnWindow(prisma, orderId, now = new Date()) {
-  const delivered = typeof prisma.orderStatusHistory?.findFirst === 'function'
-    ? await prisma.orderStatusHistory.findFirst({
+export async function assertWithinReturnWindow(db, orderId, now = new Date()) {
+  const delivered = typeof db.orderStatusHistory?.findFirst === 'function'
+    ? await db.orderStatusHistory.findFirst({
       where: { orderId, newStatus: 'delivered' },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
@@ -74,8 +74,8 @@ export async function assertWithinReturnWindow(prisma, orderId, now = new Date()
   }
 }
 
-export function createCustomerRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createCustomerRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   // All customer routes require authentication
@@ -99,15 +99,15 @@ export function createCustomerRouter({ getPrisma } = {}) {
       const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(req.query.limit, 10) || DEFAULT_PAGE_SIZE));
       const skip = (page - 1) * limit;
 
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
       // Get total count for pagination metadata
-      const total = await prisma.order.count({
+      const total = await db.order.count({
         where: { customerId },
       });
 
       // Fetch orders with items, newest first
-      const orders = await prisma.order.findMany({
+      const orders = await db.order.findMany({
         where: { customerId },
         include: { items: true },
         orderBy: { createdAt: 'desc' },
@@ -149,8 +149,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
         throw new HttpError(404, 'Order not found');
       }
 
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findFirst({
+      const db = resolveDb();
+      const order = await db.order.findFirst({
         where: { reference, customerId },
         include: {
           items: true,
@@ -188,7 +188,10 @@ export function createCustomerRouter({ getPrisma } = {}) {
           },
           contactEmail: order.contactEmail ?? null,
           contactPhone: order.contactPhone ?? null,
-          statusHistory: order.statusHistory || [],
+          // Internal notes and who made each change are for staff only.
+          statusHistory: (order.statusHistory || [])
+            .filter((entry) => entry.visibility !== 'internal')
+            .map(({ changedBy, changedByEmail, ...entry }) => entry),
           shipments: order.shipments || [],
           cancellationRequest: order.cancellationRequest || null,
           returnRequests: order.returnRequests || [],
@@ -205,8 +208,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
     try {
       const customerId = req.customerId;
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findFirst({ where: { reference, customerId } });
+      const db = resolveDb();
+      const order = await db.order.findFirst({ where: { reference, customerId } });
       if (!order) throw new HttpError(404, 'Order not found');
       if (order.status === 'shipped' || order.status === 'delivered') {
         throw new HttpError(400, 'Cancellation is not available for this order');
@@ -214,7 +217,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
       if (order.status === 'cancelled') {
         throw new HttpError(400, 'Order is already cancelled');
       }
-      const existing = await prisma.cancellationRequest.findUnique({ where: { orderId: order.id } });
+      const existing = await db.cancellationRequest.findUnique({ where: { orderId: order.id } });
       if (existing && existing.status === 'pending') {
         throw new HttpError(409, 'A cancellation request is already pending');
       }
@@ -224,7 +227,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
       const direct = order.status === 'pending';
       const reason = String((req.body && req.body.reason) || '').trim().slice(0, 500) || 'Customer requested cancellation';
       if (direct) {
-        await prisma.$transaction(async (tx) => {
+        await db.$transaction(async (tx) => {
           const r = await tx.order.updateMany({ where: { id: order.id, status: 'pending' }, data: { status: 'cancelled' } });
           if (r.count !== 1) throw new HttpError(409, 'Order status changed concurrently');
           await tx.orderStatusHistory.create({
@@ -235,8 +238,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
           });
         });
       } else {
-        await prisma.cancellationRequest.create({
-          data: { orderId: order.id, reason, status: 'pending', requestedBy: customerId, requesterEmail: (await prisma.customer.findUnique({ where: { id: customerId }, select: { email: true } })).email },
+        await db.cancellationRequest.create({
+          data: { orderId: order.id, reason, status: 'pending', requestedBy: customerId, requesterEmail: (await db.customer.findUnique({ where: { id: customerId }, select: { email: true } })).email },
         });
       }
       res.status(201).json({ data: { ok: true, direct } });
@@ -248,11 +251,11 @@ export function createCustomerRouter({ getPrisma } = {}) {
     try {
       const customerId = req.customerId;
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findFirst({ where: { reference, customerId }, include: { items: true } });
+      const db = resolveDb();
+      const order = await db.order.findFirst({ where: { reference, customerId }, include: { items: true } });
       if (!order) throw new HttpError(404, 'Order not found');
       if (order.status !== 'delivered') throw new HttpError(400, 'Returns are only available for delivered orders');
-      await assertWithinReturnWindow(prisma, order.id);
+      await assertWithinReturnWindow(db, order.id);
       const body = req.body || {};
       const items = Array.isArray(body.items) ? body.items : [];
       if (!items.length) throw new HttpError(400, 'At least one item is required');
@@ -268,8 +271,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
         requested.push({ orderItemId: id, quantity: qty, oi });
       }
       // Check eligibility pool
-      const existingReturns = await prisma.returnRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
-      const existingReplacements = await prisma.replacementRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
+      const existingReturns = await db.returnRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
+      const existingReplacements = await db.replacementRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
       const reservedByItem = new Map();
       for (const r of [...existingReturns, ...existingReplacements]) {
         if (r.status === 'rejected') continue;
@@ -283,8 +286,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
         if (r.quantity + reserved > oi.quantity) throw new HttpError(400, 'Requested quantity exceeds available eligibility');
       }
       const reason = String(body.reason || '').trim().slice(0, 500) || 'Customer requested return';
-      const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { email: true } });
-      const rr = await prisma.returnRequest.create({
+      const customer = await db.customer.findUnique({ where: { id: customerId }, select: { email: true } });
+      const rr = await db.returnRequest.create({
         data: {
           orderId: order.id,
           reason,
@@ -303,11 +306,11 @@ export function createCustomerRouter({ getPrisma } = {}) {
     try {
       const customerId = req.customerId;
       const reference = String(req.params.reference || '').trim();
-      const prisma = resolvePrisma();
-      const order = await prisma.order.findFirst({ where: { reference, customerId }, include: { items: true } });
+      const db = resolveDb();
+      const order = await db.order.findFirst({ where: { reference, customerId }, include: { items: true } });
       if (!order) throw new HttpError(404, 'Order not found');
       if (order.status !== 'delivered') throw new HttpError(400, 'Replacements are only available for delivered orders');
-      await assertWithinReturnWindow(prisma, order.id);
+      await assertWithinReturnWindow(db, order.id);
       const body = req.body || {};
       const items = Array.isArray(body.items) ? body.items : [];
       if (!items.length) throw new HttpError(400, 'At least one item is required');
@@ -321,8 +324,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
         if (!Number.isInteger(qty) || qty < 1) throw new HttpError(400, 'Invalid quantity');
         requested.push({ orderItemId: id, quantity: qty, oi });
       }
-      const existingReturns = await prisma.returnRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
-      const existingReplacements = await prisma.replacementRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
+      const existingReturns = await db.returnRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
+      const existingReplacements = await db.replacementRequest.findMany({ where: { orderId: order.id }, include: { items: true } });
       const reservedByItem = new Map();
       for (const r of [...existingReturns, ...existingReplacements]) {
         if (r.status === 'rejected') continue;
@@ -335,8 +338,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
         if (r.quantity + reserved > r.oi.quantity) throw new HttpError(400, 'Requested quantity exceeds available eligibility');
       }
       const reason = String(body.reason || '').trim().slice(0, 500) || 'Customer requested replacement';
-      const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { email: true } });
-      const rr = await prisma.replacementRequest.create({
+      const customer = await db.customer.findUnique({ where: { id: customerId }, select: { email: true } });
+      const rr = await db.replacementRequest.create({
         data: {
           orderId: order.id,
           reason,
@@ -354,8 +357,8 @@ export function createCustomerRouter({ getPrisma } = {}) {
   router.get('/notifications', async (req, res, next) => {
     try {
       const customerId = req.customerId;
-      const prisma = resolvePrisma();
-      const notifications = await prisma.notification.findMany({
+      const db = resolveDb();
+      const notifications = await db.notification.findMany({
         where: { customerId },
         orderBy: { createdAt: 'desc' },
         take: 50,
@@ -368,7 +371,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
   router.patch('/profile', validateCsrf, async (req, res, next) => {
     try {
       const customerId = req.customerId;
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const b = req.body || {};
       const data = {};
       if (b.name !== undefined) data.name = String(b.name).trim().slice(0, 200) || null;
@@ -379,7 +382,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
         }
         data.phone = phone || null;
       }
-      const updated = await prisma.customer.update({
+      const updated = await db.customer.update({
         where: { id: customerId },
         data,
         select: { id: true, email: true, name: true, phone: true, role: true },
@@ -392,7 +395,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
   router.post('/change-password', validateCsrf, async (req, res, next) => {
     try {
       const customerId = req.customerId;
-      const prisma = resolvePrisma();
+      const db = resolveDb();
       const { currentPassword, newPassword } = req.body || {};
       if (!currentPassword || !newPassword) {
         throw new HttpError(400, 'Current and new password are required');
@@ -400,7 +403,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
       if (typeof newPassword !== 'string' || newPassword.length < 12 || newPassword.length > 128) {
         throw new HttpError(400, 'New password must be between 12 and 128 characters');
       }
-      const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+      const customer = await db.customer.findUnique({ where: { id: customerId } });
       if (!customer || !customer.passwordHash) {
         throw new HttpError(400, 'Account does not support password changes');
       }
@@ -410,7 +413,7 @@ export function createCustomerRouter({ getPrisma } = {}) {
         throw new HttpError(401, 'Current password is incorrect');
       }
       const newHash = await hashPassword(newPassword);
-      await prisma.$transaction(async (tx) => {
+      await db.$transaction(async (tx) => {
         await tx.customer.update({
           where: { id: customerId },
           data: { passwordHash: newHash },

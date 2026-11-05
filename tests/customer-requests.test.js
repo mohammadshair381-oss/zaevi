@@ -19,7 +19,7 @@ async function build({ status = 'delivered', deliveredDaysAgo = 1 } = {}) {
   const customer = { id: 1, email: EMAIL, name: 'Test', role: 'customer', passwordHash: await hashPassword(PASSWORD) };
   const order = { id: 7, reference: 'ZV-TEST-1', customerId: 1, status, items: [{ id: 70, quantity: 2 }] };
   const stored = { cancellation: null, returns: [], replacements: [] };
-  const prisma = {
+  const db = {
     stored,
     order,
     customer: {
@@ -50,13 +50,13 @@ async function build({ status = 'delivered', deliveredDaysAgo = 1 } = {}) {
         return row;
       },
     },
-    $transaction: async (fn) => fn(prisma),
+    $transaction: async (fn) => fn(db),
   };
-  prisma.order = {
+  db.order = {
     findFirst: async ({ where }) => (where.reference === order.reference && where.customerId === 1 ? order : null),
     updateMany: async ({ data }) => { Object.assign(order, data); return { count: 1 }; },
   };
-  const app = createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
+  const app = createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
   const login = await request(app).post('/api/auth/login').send({ email: EMAIL, password: PASSWORD });
   assert.equal(login.status, 200);
   const cookies = login.headers['set-cookie'];

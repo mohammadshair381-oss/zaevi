@@ -2,15 +2,16 @@ import 'dotenv/config';
 
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
-import { databaseNameOf, resolveDatabaseUrl } from './config/database.js';
+import { resolveDatabaseName } from './config/database.js';
 import { connectDB, disconnectDB } from './db/connect.js';
 import { adminRecoveryConfig } from './services/admin-recovery.js';
 import { otpAvailability } from './services/email-otp.js';
 
 async function start() {
   let config;
+  let dbName;
   try {
-    process.env.DATABASE_URL = resolveDatabaseUrl();
+    dbName = resolveDatabaseName();
     config = loadEnv();
   } catch (error) {
     console.error(`[config] ${error.message}`);
@@ -57,12 +58,12 @@ async function start() {
   }
 
   const server = app.listen(config.PORT, () => {
-    console.log(`[server] ZAEVI backend listening on port ${config.PORT} (${config.NODE_ENV}, database: ${databaseNameOf(config.DATABASE_URL)})`);
+    console.log(`[server] ZAEVI backend listening on port ${config.PORT} (${config.NODE_ENV}, database: ${dbName})`);
   });
 
   try {
     await connectDB();
-    console.log('[db] Database connection established (MySQL/Prisma)');
+    console.log('[db] Database connection established (MongoDB)');
   } catch (error) {
     console.error(`[db] Database connection failed: ${error.message}`);
     console.error('[db] /api/health will report "degraded" until the database is reachable.');

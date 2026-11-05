@@ -4,7 +4,7 @@
  */
 
 import { HttpError } from './errors.js';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { validateCsrf } from './csrf.js';
 
 /**
@@ -66,11 +66,11 @@ export function verifyCsrf(req, res, next) {
  * with 404 so the existence of the admin surface is not disclosed.
  *
  * Built as a factory (matching the project's router factories) so tests can
- * inject an in-memory prisma client via `createRequireAdmin({ getPrisma })`;
+ * inject an in-memory db client via `createRequireAdmin({ getDb })`;
  * the default `requireAdmin` export resolves the real client lazily.
  */
-export function createRequireAdmin({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createRequireAdmin({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   return async function requireAdmin(req, res, next) {
     try {
       const customerId = req.session && req.session.isAuthenticated
@@ -79,8 +79,8 @@ export function createRequireAdmin({ getPrisma } = {}) {
       if (!customerId) {
         return next(new HttpError(404, 'Not Found'));
       }
-      const prisma = resolvePrisma();
-      const customer = await prisma.customer.findUnique({
+      const db = resolveDb();
+      const customer = await db.customer.findUnique({
         where: { id: customerId },
         select: { role: true },
       });
@@ -95,7 +95,7 @@ export function createRequireAdmin({ getPrisma } = {}) {
   };
 }
 
-/** Default admin gate resolving the real Prisma client. */
+/** Default admin gate resolving the real data client. */
 export const requireAdmin = createRequireAdmin();
 
 export default { requireAuth, optionalAuth, getCurrentCustomer, requireAdmin, createRequireAdmin, verifyCsrf };

@@ -3,11 +3,18 @@ import assert from 'node:assert/strict';
 
 // Live database test: verifies the applied commerce migration (Customer, Order,
 // OrderItem), the foreign-key semantics and that the existing catalog is
-// untouched. Skipped (never failed) when DATABASE_URL is unset or unreachable.
+// untouched. Skipped (never failed) when MONGODB_URI is unset or unreachable.
 import 'dotenv/config';
 
-import { getPrismaClient, disconnectDB } from '../src/db/connect.js';
+import { resolveDatabaseName } from '../src/config/database.js';
+import { MODELS } from '../src/db/schema.js';
+import { getDbClient, disconnectDB } from '../src/db/connect.js';
 import { rupeesToPaise, lineTotalMinor } from '../src/models/money.js';
+
+// Live tests only ever run on a database whose name ends in zaevi_test.
+if (process.env.MONGODB_URI && !resolveDatabaseName().endsWith('zaevi_test')) {
+  throw new Error('orders.db.test.js refuses to run against this database');
+}
 
 const CUSTOMER_COLUMNS = ['id', 'email', 'name', 'phone', 'createdAt', 'updatedAt'];
 const ORDER_COLUMNS = [
@@ -44,94 +51,58 @@ const ORDER_ITEM_COLUMNS = [
 const ROLLBACK = new Error('ROLLBACK_TEST_MARKER');
 
 async function connectOrSkip(t) {
-  if (!process.env.DATABASE_URL) {
-    t.skip('DATABASE_URL is not set; skipping live database test');
+  if (!process.env.MONGODB_URI) {
+    t.skip('MONGODB_URI is not set; skipping live database test');
     return null;
   }
-  const prisma = getPrismaClient();
+  const db = getDbClient();
   try {
-    await prisma.$queryRawUnsafe('SELECT 1');
-    return prisma;
+    await db.$ping();
+    return db;
   } catch (error) {
     t.diagnostic(`database unavailable: ${error.message}`);
-    t.skip('MySQL is not reachable; skipping live database test');
+    t.skip('the database is not reachable; skipping live database test');
     return null;
   }
 }
 
-async function tableNames(prisma) {
-  const rows = await prisma.$queryRawUnsafe(
-    'SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()'
-  );
-  return new Set(rows.map((r) => String(r.name).toLowerCase()));
-}
-
-async function columnNamesFor(prisma, table) {
-  const rows = await prisma.$queryRawUnsafe(
-    "SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?",
-    table
-  );
-  return new Set(rows.map((r) => String(r.name)));
-}
-
-async function foreignKeys(prisma) {
-  const rows = await prisma.$queryRawUnsafe(`
-    SELECT kcu.table_name AS tbl, kcu.column_name AS col,
-           kcu.referenced_table_name AS ref, rc.delete_rule AS rule
-    FROM information_schema.key_column_usage kcu
-    JOIN information_schema.referential_constraints rc
-      ON rc.constraint_schema = kcu.constraint_schema AND rc.constraint_name = kcu.constraint_name
-    WHERE kcu.constraint_schema = DATABASE() AND kcu.referenced_table_name IS NOT NULL
-  `);
-  const key = (r) => `${String(r.tbl).toLowerCase()}.${String(r.col).toLowerCase()}`;
-  return new Map(rows.map((r) => [key(r), { ref: String(r.ref).toLowerCase(), rule: String(r.rule).toLowerCase() }]));
-}
-
-test('live database: commerce tables, columns and relationships match the schema', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+test('live database: commerce collections, fields and relationships match the schema', async (t) => {
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   try {
-    const tables = await tableNames(prisma);
-    for (const name of ['customer', 'order', 'orderitem']) {
-      assert.ok(tables.has(name), `${name} table must exist`);
+    const { Customer, Order, OrderItem } = await db.$models();
+    const names = (await Customer.db.db.listCollections({}, { nameOnly: true }).toArray()).map((c) => c.name);
+    for (const name of ['customers', 'orders', 'orderItems', 'products']) {
+      assert.ok(names.includes(name), `${name} collection must exist`);
     }
-    assert.ok(tables.has('product'), 'existing Product table must remain');
-
-    assert.ok((await columnNamesFor(prisma, 'Customer')).size > 0);
-    for (const table of [
-      ['Customer', CUSTOMER_COLUMNS],
-      ['Order', ORDER_COLUMNS],
-      ['OrderItem', ORDER_ITEM_COLUMNS],
-    ]) {
-      const columns = await columnNamesFor(prisma, table[0]);
-      for (const column of table[1]) {
-        assert.ok(columns.has(column), `${table[0]}.${column} must exist`);
+    for (const [model, columns] of [[Customer, CUSTOMER_COLUMNS], [Order, ORDER_COLUMNS], [OrderItem, ORDER_ITEM_COLUMNS]]) {
+      for (const column of columns.filter((c) => c !== 'id')) {
+        assert.ok(model.schema.path(column), `${model.modelName}.${column} must exist`);
       }
     }
-
-    const fks = await foreignKeys(prisma);
-    assert.deepEqual(fks.get('order.customerid'), { ref: 'customer', rule: 'set null' });
-    assert.deepEqual(fks.get('orderitem.orderid'), { ref: 'order', rule: 'cascade' });
-    assert.deepEqual(fks.get('orderitem.productid'), { ref: 'product', rule: 'set null' });
-    assert.deepEqual(fks.get('productsize.productid'), { ref: 'product', rule: 'cascade' });
+    const rule = (model, field) => Object.values(MODELS[model].relations).find((r) => r.local === field);
+    assert.deepEqual([rule('Order', 'customerId').model, rule('Order', 'customerId').onDelete], ['Customer', 'SetNull']);
+    assert.deepEqual([rule('OrderItem', 'orderId').model, rule('OrderItem', 'orderId').onDelete], ['Order', 'Cascade']);
+    assert.deepEqual([rule('OrderItem', 'productId').model, rule('OrderItem', 'productId').onDelete], ['Product', 'SetNull']);
+    assert.deepEqual([rule('ProductSize', 'productId').model, rule('ProductSize', 'productId').onDelete], ['Product', 'Cascade']);
   } finally {
     await disconnectDB();
   }
 });
 
 test('live database: customers, guest orders and item snapshots behave correctly', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   try {
-    const product = await prisma.product.findUnique({ where: { id: 'ZV001' }, include: { sizes: true } });
+    const product = await db.product.findUnique({ where: { id: 'ZV001' }, include: { sizes: true } });
     assert.ok(product, 'catalog product ZV001 must exist for the snapshot test');
     const unitPriceMinor = rupeesToPaise(product.price);
     const lineTotal = lineTotalMinor(unitPriceMinor, 2);
 
     await assert.rejects(
-      prisma.$transaction(async (tx) => {
+      db.$transaction(async (tx) => {
         // Guest order without a customer.
         const guest = await tx.order.create({
           data: {
@@ -223,22 +194,22 @@ test('live database: customers, guest orders and item snapshots behave correctly
     // the same schema in parallel.
     const references = ['TST-GUEST-0001', 'TST-GUEST-0002', 'TST-CUST-0003'];
     assert.equal(
-      await prisma.order.count({ where: { reference: { in: references } } }),
+      await db.order.count({ where: { reference: { in: references } } }),
       0,
       'no test orders may survive the rollback'
     );
     assert.equal(
-      await prisma.orderItem.count({ where: { order: { reference: { in: references } } } }),
+      await db.orderItem.count({ where: { order: { reference: { in: references } } } }),
       0,
       'no test order items may survive the rollback'
     );
     assert.equal(
-      await prisma.customer.count({ where: { email: { in: ['guest@zaevi.test', 'aya.el@zaevi.test'] } } }),
+      await db.customer.count({ where: { email: { in: ['guest@zaevi.test', 'aya.el@zaevi.test'] } } }),
       0,
       'no test customers may survive the rollback'
     );
     assert.ok(
-      await prisma.product.findUnique({ where: { id: product.id } }),
+      await db.product.findUnique({ where: { id: product.id } }),
       'the deleted catalog product must be restored by the rollback'
     );
   } finally {
@@ -247,14 +218,14 @@ test('live database: customers, guest orders and item snapshots behave correctly
 });
 
 test('live database: the existing 12 products and 49 sizes are unchanged', async (t) => {
-  const prisma = await connectOrSkip(t);
-  if (!prisma) return;
+  const db = await connectOrSkip(t);
+  if (!db) return;
 
   try {
-    assert.equal(await prisma.product.count(), 12);
-    assert.equal(await prisma.productSize.count(), 49);
+    assert.equal(await db.product.count(), 12);
+    assert.equal(await db.productSize.count(), 49);
 
-    const ids = await prisma.product.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
+    const ids = await db.product.findMany({ select: { id: true }, orderBy: { id: 'asc' } });
     assert.deepEqual(
       ids.map((row) => row.id),
       Array.from({ length: 12 }, (_, i) => `ZV${String(i + 1).padStart(3, '0')}`)

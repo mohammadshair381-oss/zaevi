@@ -1,17 +1,16 @@
 /**
  * Decides which database this process may use. This is the only place that decides.
  *
- * - Development and test use `zaevi_test`, even if DATABASE_URL names `zaevi`, so a
- *   local run can never touch production data.
- * - Production uses `zaevi` only when NODE_ENV=production, ZAEVI_PRODUCTION_DB_APPROVED=true
- *   and DATABASE_URL names `zaevi`. Anything less refuses to start, so a live site
- *   can never silently run on test data.
+ * - Development and test use `zaevi_test`, even if MONGODB_URI names `zaevi`, so a local
+ *   run can never touch production data. Another name in the link is respected.
+ * - Production uses `zaevi` only when NODE_ENV=production and ZAEVI_PRODUCTION_DB_APPROVED=true.
+ *   A link naming any other database refuses to start, so a live site can never silently
+ *   run on test data.
  */
 export const DEVELOPMENT_DATABASE = 'zaevi_test';
 export const PRODUCTION_DATABASE = 'zaevi';
 
-const DEFAULT_DEVELOPMENT_URL = `mysql://root@127.0.0.1:3306/${DEVELOPMENT_DATABASE}`;
-const URL_PARTS = /^(mysql:\/\/[^/]*\/)([^/?]*)(\?.*)?$/i;
+const URI_PARTS = /^mongodb(?:\+srv)?:\/\/[^/?]*(?:\/([^?]*))?(?:\?.*)?$/i;
 
 export class DatabaseConfigError extends Error {
   constructor(message) {
@@ -20,44 +19,33 @@ export class DatabaseConfigError extends Error {
   }
 }
 
-/** The database name in a mysql:// URL, or null if it cannot be read. */
-export function databaseNameOf(url) {
-  const match = URL_PARTS.exec(String(url ?? '').trim());
-  return match ? match[2] : null;
+/** The database name in a MongoDB link, or null if it names none or cannot be read. */
+export function databaseNameOf(uri) {
+  const match = URI_PARTS.exec(String(uri ?? '').trim());
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
 }
 
-function withDatabaseName(url, name) {
-  return String(url).trim().replace(URL_PARTS, (_, prefix, _name, query = '') => `${prefix}${name}${query}`);
-}
-
-export function resolveDatabaseUrl(env = process.env) {
+/** The database this environment may use, whether or not a link has been supplied yet. */
+export function resolveDatabaseName(env = process.env) {
+  const named = databaseNameOf(env.MONGODB_URI);
   if (env.NODE_ENV === 'production') {
     if (env.ZAEVI_PRODUCTION_DB_APPROVED !== 'true') {
       throw new DatabaseConfigError(
         'Production is not approved to use a database yet. Set ZAEVI_PRODUCTION_DB_APPROVED=true when launch is approved.'
       );
     }
-    const url = String(env.DATABASE_URL ?? '').trim();
-    if (databaseNameOf(url) !== PRODUCTION_DATABASE) {
-      throw new DatabaseConfigError(`In production, DATABASE_URL must name the "${PRODUCTION_DATABASE}" database.`);
+    if (named && named !== PRODUCTION_DATABASE) {
+      throw new DatabaseConfigError(`In production, MONGODB_URI must name the "${PRODUCTION_DATABASE}" database or none.`);
     }
-    return url;
+    return PRODUCTION_DATABASE;
   }
-
-  const url = String(env.TEST_DATABASE_URL || env.DATABASE_URL || DEFAULT_DEVELOPMENT_URL).trim();
-  return databaseNameOf(url) === PRODUCTION_DATABASE ? withDatabaseName(url, DEVELOPMENT_DATABASE) : url;
+  return named && named !== PRODUCTION_DATABASE ? named : DEVELOPMENT_DATABASE;
 }
 
-/**
- * Applies the same rule to Prisma CLI commands, so `npx prisma migrate deploy` cannot
- * reach production from a development shell. An unapproved production shell gets no
- * URL at all: commands that need a database fail, while `prisma generate` still works.
- */
-export function applyDatabaseUrlToEnv(env = process.env) {
-  try {
-    env.DATABASE_URL = resolveDatabaseUrl(env);
-  } catch (error) {
-    if (!(error instanceof DatabaseConfigError)) throw error;
-    delete env.DATABASE_URL;
-  }
+/** @returns {{ uri: string, dbName: string }} */
+export function resolveDatabase(env = process.env) {
+  const dbName = resolveDatabaseName(env);
+  const uri = String(env.MONGODB_URI ?? '').trim();
+  if (!uri) throw new DatabaseConfigError('MONGODB_URI is required.');
+  return { uri, dbName };
 }

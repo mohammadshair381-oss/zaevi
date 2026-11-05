@@ -11,7 +11,7 @@ import { hashPassword } from '../src/models/auth.js';
 const silentLogger = { error() {}, warn() {}, info() {}, log() {} };
 const SESSION_SECRET = 'test-session-secret-at-least-32-characters';
 const clone = (value) => JSON.parse(JSON.stringify(value));
-const appWith = (prisma) => createApp({ prisma, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
+const appWith = (db) => createApp({ db, logger: silentLogger, sessionSecret: SESSION_SECRET, authRateLimit: false, loginRateLimit: false });
 
 test('studio default content is valid', () => {
   const { errors, value } = validateStudioState(clone(STUDIO_DEFAULT_STATE));
@@ -162,7 +162,7 @@ test('products: an edit cannot change the ID, and sizes differing only by case c
 async function studioAdmin() {
   const admin = { id: 1, email: 'studio-admin@example.com', role: 'admin', passwordHash: await hashPassword('admin-password-123') };
   let row = null;
-  const prisma = {
+  const db = {
     customer: { findUnique: async ({ where }) => (where.email === admin.email || where.id === admin.id ? admin : null) },
     siteStudio: {
       findUnique: async () => row,
@@ -170,7 +170,7 @@ async function studioAdmin() {
       update: async ({ data }) => { row = { ...row, ...data }; return row; },
     },
   };
-  const app = appWith(prisma);
+  const app = appWith(db);
   const login = await request(app).post('/api/auth/login').send({ email: admin.email, password: 'admin-password-123' });
   assert.equal(login.status, 200);
   const pairs = login.headers['set-cookie'].map((c) => c.split(';')[0]);

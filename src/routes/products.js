@@ -4,13 +4,13 @@
  *   GET /api/products        - paginated listing with optional filters
  *   GET /api/products/:id    - a single product by its business id (e.g. ZV001)
  *
- * The router is built as a factory that receives a `getPrisma()` resolver so
+ * The router is built as a factory that receives a `getDb()` resolver so
  * tests can inject an in-memory client and the app can lazily resolve the real
- * Prisma client at request time.
+ * data client at request time.
  */
 import { Router } from 'express';
 
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { parseProductListQuery } from '../models/product-query.js';
 
@@ -20,7 +20,7 @@ const SIZES_INCLUDE = { sizes: { orderBy: { position: 'asc' } } };
 /** Maximum business-id length, mirrored from the Product.id column. */
 const MAX_ID_LENGTH = 32;
 
-/** Map a Prisma Product row (with sizes) to the public API shape. */
+/** Map a database Product row (with sizes) to the public API shape. */
 export function serializeProduct(row) {
   return {
     id: row.id,
@@ -42,7 +42,7 @@ export function serializeProduct(row) {
   };
 }
 
-/** Build the Prisma `where` clause for the supported filters. */
+/** Build the database `where` clause for the supported filters. */
 export function buildProductWhere({ category, gender, search } = {}) {
   const where = {};
   if (category !== undefined) where.category = category;
@@ -57,8 +57,8 @@ export function buildProductWhere({ category, gender, search } = {}) {
   return where;
 }
 
-export function createProductsRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createProductsRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
 
   // GET /api/products
@@ -66,10 +66,10 @@ export function createProductsRouter({ getPrisma } = {}) {
     try {
       const { page, limit, category, gender, search } = parseProductListQuery(req.query);
       const where = buildProductWhere({ category, gender, search });
-      const prisma = resolvePrisma();
+      const db = resolveDb();
 
-      const total = await prisma.product.count({ where });
-      const rows = await prisma.product.findMany({
+      const total = await db.product.count({ where });
+      const rows = await db.product.findMany({
         where,
         include: SIZES_INCLUDE,
         orderBy: { id: 'asc' },
@@ -99,8 +99,8 @@ export function createProductsRouter({ getPrisma } = {}) {
         throw new HttpError(404, `Product not found: ${id || '(empty id)'}`);
       }
 
-      const prisma = resolvePrisma();
-      const row = await prisma.product.findUnique({ where: { id }, include: SIZES_INCLUDE });
+      const db = resolveDb();
+      const row = await db.product.findUnique({ where: { id }, include: SIZES_INCLUDE });
       if (!row) {
         throw new HttpError(404, `Product not found: ${id}`);
       }

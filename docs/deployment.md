@@ -5,7 +5,7 @@
 | GitHub | Holds the code. Vercel and Render deploy from it |
 | Vercel | Serves the public pages and is the address customers visit |
 | Render | Runs the Express API |
-| A hosted MySQL or MariaDB | Stores the data. Render's managed database is Postgres, which this project does not use |
+| MongoDB Atlas | Stores the data |
 | Resend | Sends email over SMTP |
 
 Vercel forwards `/api/*` and `/admin*` to Render, so the browser sees one website and sign-in cookies keep working.
@@ -14,24 +14,29 @@ Vercel forwards `/api/*` and `/admin*` to Render, so the browser sees one websit
 
 Use a **private** repository. The README and tests include the demo logins, which work only on `zaevi_test`.
 
-`.env`, backups, SQL dumps, data exports, uploads, certificates and `docs/pre-launch/` are ignored by Git. Migrations stay in Git byte for byte, through `.gitattributes`.
+`.env`, backups, database dumps, data exports, uploads, certificates and `docs/pre-launch/` are ignored by Git.
 
-## 2. Create the database
+## 2. Prepare MongoDB Atlas
 
-1. Create a database named exactly `zaevi`. The server refuses to start in production on any other name.
-2. From a computer that can reach it, run these in PowerShell with the real connection string:
+The server decides the database from its environment. Production always uses `zaevi`, and development and tests use `zaevi_test`.
+
+1. Pick a paid cluster for the real shop, in the same region as your Render service. Atlas's free tier is too limited for a live store: 0.5 GB, 100 operations a second, and no automatic scaling.
+2. Under **Database Access**, create a user for the app with read and write access, not an Atlas admin.
+3. Under **Network Access**, add Render's outbound addresses. You'll find them in the Render service under **Connect > Outbound**, so this step finishes after step 4. Avoid allowing every address (`0.0.0.0/0`).
+4. Turn on backups, and test a restore before launch.
+5. To prepare a new database, run these in PowerShell with the real link, then close the window so these settings don't affect anything you run later:
 
    ```powershell
    $env:NODE_ENV='production'
    $env:ZAEVI_PRODUCTION_DB_APPROVED='true'
-   $env:DATABASE_URL='mysql://USER:PASSWORD@HOST:3306/zaevi'
-   npx prisma migrate deploy
+   $env:MONGODB_URI='mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/?retryWrites=true&w=majority'
+   npm run db:setup
    ```
 
-3. Expect 17 applied migrations and 31 tables.
-4. Create an administrator with `node scripts/create-admin.cjs`, using a mailbox you can read. Admins need an emailed code to sign in.
+   This creates the collections and every index, including the unique rules, and adds the default settings and newsletter coupon. It never changes existing records.
+6. If the database is empty, also run `node scripts/create-admin.cjs` in that window, using a mailbox you can read. Admins need an emailed code to sign in.
 
-**Moving existing data:** a dump from the local Windows server stores table names in lowercase, such as `customer`. Prisma expects `Customer`, and Linux MySQL is case-sensitive, so an unedited dump will not work. Plan and rehearse this separately.
+**If connecting fails with `querySrv ECONNREFUSED`,** that computer's DNS can't answer the lookup Atlas links use. Set `MONGODB_DNS_SERVERS`, for example to `8.8.8.8,1.1.1.1`.
 
 ## 3. Set up Resend
 
@@ -52,7 +57,7 @@ Use a **private** repository. The README and tests include the demo logins, whic
 
    | Variable | Value |
    | --- | --- |
-   | `DATABASE_URL` | Your connection string, naming `zaevi` |
+   | `MONGODB_URI` | Your Atlas link. It may name the `zaevi` database or none |
    | `ZAEVI_PRODUCTION_DB_APPROVED` | `true`, once launch is approved |
    | `PROXY_SECRET` | The secret from step 1 |
    | `SMTP_PASS` | Your Resend API key |
@@ -130,12 +135,6 @@ It needs a working database. It cannot help with a forgotten password, because t
 
 ## Later updates
 
-Pushing to GitHub redeploys both services. Run `npx prisma migrate deploy` as in step 2 **before** pushing code that needs a new migration. Migrations are deliberately not run automatically.
+Pushing to GitHub redeploys both services. Run `npm run db:setup` as in step 2 **before** pushing code that adds or changes an index. It's safe to repeat.
 
-## Existing local databases
-
-Two old migrations were corrected to use exact table names (`Customer`, `ProductSize`), because a new Linux database would otherwise fail on them. The SQL does the same thing, but the files' checksums no longer match the ones recorded in databases where they were already applied.
-
-- `prisma migrate deploy` and `prisma migrate status` carry on normally. Use only these on existing databases.
-- **Never run `prisma migrate dev`** on `zaevi` or `zaevi_test`. It would notice the changed files and offer to erase the database.
-- A new database records the new checksums, so it has no such difference.
+The data layer has no migration files. To change what's stored, edit `src/db/schema.js`.

@@ -7,8 +7,7 @@ services:
     # A paid plan, because only paid services can keep files on a persistent disk.
     # Render shows the price before anything is created.
     plan: 0.5c-512mb
-    # Prisma's CLI is a dev dependency, and NODE_ENV=production would otherwise skip it.
-    buildCommand: npm ci --include=dev && npx prisma generate
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
     # Only this folder survives restarts and deploys. A disk also limits the service to one
@@ -20,8 +19,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Must name a database called exactly "zaevi".
-      - key: DATABASE_URL
+      # The Atlas link. It may name the "zaevi" database or none, and never another.
+      - key: MONGODB_URI
         sync: false
       # Enter "true" only once launch on this database is approved. Anything else refuses to start.
       - key: ZAEVI_PRODUCTION_DB_APPROVED

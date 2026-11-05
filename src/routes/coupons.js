@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPrismaClient } from '../db/connect.js';
+import { getDbClient } from '../db/connect.js';
 import { HttpError } from '../middleware/errors.js';
 import { createRequireAdmin } from '../middleware/auth.js';
 import { validateCsrf } from '../middleware/csrf.js';
@@ -22,7 +22,7 @@ export function calculateCouponDiscount({ coupon, subtotalMinor }) {
  * preview and order creation both call this, so a discount that was shown can
  * never be silently dropped from the order.
  */
-export async function assertCouponUsable(prisma, coupon, { subtotalMinor, email, customerId }) {
+export async function assertCouponUsable(db, coupon, { subtotalMinor, email, customerId }) {
   if (!coupon || !coupon.isActive) throw new HttpError(404, 'Invalid or expired promo code');
 
   const now = new Date();
@@ -40,7 +40,7 @@ export async function assertCouponUsable(prisma, coupon, { subtotalMinor, email,
   const normalizedEmail = String(email || '').trim().toLowerCase();
   if (coupon.requiresNewsletter) {
     const subscriber = normalizedEmail
-      ? await prisma.newsletterSubscriber.findUnique({ where: { email: normalizedEmail } })
+      ? await db.newsletterSubscriber.findUnique({ where: { email: normalizedEmail } })
       : null;
     if (!subscriber || subscriber.status !== 'subscribed') {
       throw new HttpError(400, 'This code is for ZAEVI newsletter subscribers. Use the email address you subscribed with.');
@@ -52,18 +52,18 @@ export async function assertCouponUsable(prisma, coupon, { subtotalMinor, email,
   const owners = [];
   if (customerId) owners.push({ customerId });
   if (normalizedEmail) owners.push({ order: { contactEmail: normalizedEmail } });
-  if (owners.length > 0 && typeof prisma.couponUsage?.count === 'function') {
-    const pastUsage = await prisma.couponUsage.count({ where: { couponId: coupon.id, OR: owners } });
+  if (owners.length > 0 && typeof db.couponUsage?.count === 'function') {
+    const pastUsage = await db.couponUsage.count({ where: { couponId: coupon.id, OR: owners } });
     if (pastUsage >= (coupon.perCustomerLimit ?? 1)) {
       throw new HttpError(400, 'You have already redeemed this promo code');
     }
   }
 }
 
-export function createCouponsRouter({ getPrisma } = {}) {
-  const resolvePrisma = getPrisma ?? getPrismaClient;
+export function createCouponsRouter({ getDb } = {}) {
+  const resolveDb = getDb ?? getDbClient;
   const router = Router();
-  const requireAdmin = createRequireAdmin({ getPrisma: resolvePrisma });
+  const requireAdmin = createRequireAdmin({ getDb: resolveDb });
 
   // -------------------------------------------------------------------------
   // Public / Customer Validation Endpoint
@@ -80,10 +80,10 @@ export function createCouponsRouter({ getPrisma } = {}) {
         throw new HttpError(400, 'Valid subtotal is required to apply promo code');
       }
 
-      const prisma = resolvePrisma();
-      const coupon = await prisma.coupon.findUnique({ where: { code } });
+      const db = resolveDb();
+      const coupon = await db.coupon.findUnique({ where: { code } });
       const customerId = req.session?.isAuthenticated ? req.session.customerId : null;
-      await assertCouponUsable(prisma, coupon, { subtotalMinor, email: req.body?.email, customerId });
+      await assertCouponUsable(db, coupon, { subtotalMinor, email: req.body?.email, customerId });
 
       const discountMinor = calculateCouponDiscount({ coupon, subtotalMinor });
       const newTotalMinor = Math.max(0, subtotalMinor - discountMinor);
@@ -110,8 +110,8 @@ export function createCouponsRouter({ getPrisma } = {}) {
   // GET /api/admin/coupons
   router.get('/admin/coupons', requireAdmin, async (req, res, next) => {
     try {
-      const prisma = resolvePrisma();
-      const coupons = await prisma.coupon.findMany({
+      const db = resolveDb();
+      const coupons = await db.coupon.findMany({
         orderBy: { createdAt: 'desc' },
       });
       return res.status(200).json({ data: coupons });
@@ -133,11 +133,11 @@ export function createCouponsRouter({ getPrisma } = {}) {
         throw new HttpError(400, 'Discount value must be a positive integer');
       }
 
-      const prisma = resolvePrisma();
-      const existing = await prisma.coupon.findUnique({ where: { code } });
+      const db = resolveDb();
+      const existing = await db.coupon.findUnique({ where: { code } });
       if (existing) throw new HttpError(409, `Coupon with code "${code}" already exists`);
 
-      const coupon = await prisma.coupon.create({
+      const coupon = await db.coupon.create({
         data: {
           code,
           description: b.description ? String(b.description).trim().slice(0, 255) : null,
@@ -172,8 +172,8 @@ export function createCouponsRouter({ getPrisma } = {}) {
       if (b.perCustomerLimit !== undefined) data.perCustomerLimit = b.perCustomerLimit ? Number(b.perCustomerLimit) : null;
       if (b.requiresNewsletter !== undefined) data.requiresNewsletter = Boolean(b.requiresNewsletter);
 
-      const prisma = resolvePrisma();
-      const coupon = await prisma.coupon.update({
+      const db = resolveDb();
+      const coupon = await db.coupon.update({
         where: { id },
         data,
       });
@@ -188,8 +188,8 @@ export function createCouponsRouter({ getPrisma } = {}) {
   router.delete('/admin/coupons/:id', requireAdmin, validateCsrf, async (req, res, next) => {
     try {
       const id = Number(req.params.id);
-      const prisma = resolvePrisma();
-      await prisma.coupon.delete({ where: { id } });
+      const db = resolveDb();
+      await db.coupon.delete({ where: { id } });
       return res.status(200).json({ data: { ok: true } });
     } catch (error) {
       return next(error);
