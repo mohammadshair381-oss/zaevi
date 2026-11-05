@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZAEVI Homepage Editor</title>
+  <link rel="stylesheet" href="/css/homepage-editor.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script defer src="/js/homepage-sidebar.js"></script>
+  <script defer src="/js/homepage-media.js"></script>
+  <script defer src="/js/homepage-theme.js"></script>
+  <script defer src="/js/homepage-editor.js"></script>
+  <script defer src="/js/homepage-preview.js"></script>
+</head>
+<body class="e-body">
+  <form hidden aria-hidden="true" data-editor-csrf></form>
+  <div class="e-shell" data-editor-shell>
+    <script type="application/json" data-editor-bootstrap>
+    {
+      "stateUrl": "/api/admin/cms/homepage",
+      "applyUrl": "/api/admin/cms/homepage",
+      "mediaUrl": "/api/admin/cms/media",
+      "mediaDeleteUrlTmpl": "/api/admin/cms/media/0",
+      "heroSlideCreateUrl": "",
+      "heroSlideUpdateUrlTmpl": "",
+      "heroSlideDeleteUrlTmpl": "",
+      "testimonialCreateUrl": "",
+      "testimonialUpdateUrlTmpl": "",
+      "testimonialDeleteUrlTmpl": "",
+      "logoCreateUrl": "",
+      "logoUpdateUrlTmpl": "",
+      "logoDeleteUrlTmpl": "",
+      "productSectionUpdateUrlTmpl": ""
+    }
+    </script>
+    <header class="e-topbar">
+      <div class="e-brand">
+        <span class="e-dot"></span>
+        <div>
+          <div class="e-title">ZAEVI Homepage Editor</div>
+          <div class="e-sub">Homepage draft / publish lifecycle</div>
+        </div>
+      </div>
+      <div class="e-top-actions">
+        <a class="e-btn e-btn--ghost" href="/admin">Back to Admin</a>
+        <button class="e-btn e-btn--ghost" type="button" data-editor-reload>Reload storefront frame</button>
+        <button class="e-btn e-btn--primary" type="button" data-editor-save>Save Draft</button>
+        <button class="e-btn e-btn--ghost" type="button" data-editor-publish>Publish</button>
+        <a class="e-btn e-btn--ghost" href="/api/auth/logout">Logout</a>
+      </div>
+    </header>
+    <div class="e-main">
+      <aside class="e-sidebar" aria-label="Website Editor">
+        <div class="e-search">
+          <input class="e-input" type="search" placeholder="Search sections…" data-editor-search>
+        </div>
+        <div class="e-panels" data-editor-panels></div>
+      </aside>
+      <section class="e-preview" aria-label="Static storefront frame">
+        <div class="e-preview-top">
+          <div class="e-pill">Static storefront frame</div>
+          <div class="e-status" data-editor-status aria-live="polite">Draft preview is not connected yet</div>
+        </div>
+        <div class="e-preview-frame">
+          <iframe title="Static storefront frame; homepage draft is not rendered here" data-editor-iframe src="/index.html" referrerpolicy="no-referrer"></iframe>
+        </div>
+      </section>
+    </div>
+  </div>
+  <div class="m-modal" data-media-modal hidden>
+    <div class="m-backdrop" data-media-close></div>
+    <div class="m-panel" role="dialog" aria-modal="true" aria-label="Media library">
+      <div class="m-top">
+        <div>
+          <div class="m-title">Media Library</div>
+          <div class="m-sub">Upload, select, delete — updates draft state</div>
+        </div>
+        <button class="m-x" type="button" data-media-close>✕</button>
+      </div>
+      <div class="m-sub" data-media-status role="status" aria-live="polite"></div>
+      <div class="m-upload">
+        <input class="m-file" type="file" data-media-file accept="image/png,image/jpeg,image/webp,image/gif">
+        <input class="m-input" type="text" placeholder="Title" data-media-title>
+        <input class="m-input" type="text" placeholder="Alt text" data-media-alt>
+        <select class="m-input" data-media-kind>
+          <option value="image">Image</option>
+          <option value="video">Video</option>
+        </select>
+        <button class="m-btn m-btn--primary" type="button" data-media-upload>Upload</button>
+      </div>
+      <div class="m-grid" data-media-grid></div>
+    </div>
+  </div>
+</body>
+</html>

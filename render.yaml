@@ -7,8 +7,10 @@ services:
     # A paid plan, because only paid services can keep files on a persistent disk.
     # Render shows the price before anything is created.
     plan: 0.5c-512mb
-    buildCommand: npm ci --omit=dev
-    startCommand: npm start
+    # Built from the repository root, not backend/: the server also serves frontend/admin/,
+    # and Render hides anything outside a service's root directory.
+    buildCommand: npm ci --omit=dev --prefix backend
+    startCommand: npm --prefix backend start
     healthCheckPath: /api/health
     # Only this folder survives restarts and deploys. A disk also limits the service to one
     # instance, which in-memory sessions need anyway, and adds a few seconds' downtime per deploy.
