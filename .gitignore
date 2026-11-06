@@ -75,3 +75,4 @@ dist/
 
 # Internal launch records with personal email addresses. Kept on disk, not in Git.
 docs/pre-launch/
+scripts/verify-production-admin.mjs

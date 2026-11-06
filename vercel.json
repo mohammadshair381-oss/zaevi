@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "echo The static build needs no packages",
-  "buildCommand": "node backend/scripts/build-static.mjs",
+  "buildCommand": "node scripts/build-static.mjs",
   "outputDirectory": "dist",
   "routes": [
     {
