@@ -5,8 +5,7 @@ and vanilla JavaScript, served by an Express backend. The backend stores the
 product catalog, customer accounts, addresses and orders in MongoDB Atlas (via Mongoose),
 and exposes catalog, checkout, tracking and admin APIs.
 
-The backend serves the storefront files in place, and `products.json` is also
-served statically.
+The code is split into `frontend/` (the storefront) and `backend/` (the API). See "Project layout".
 
 ## Production model
 
@@ -61,7 +60,7 @@ Shipping, Returns, Privacy, Terms, Accessibility, Reset Password, Unsubscribe, A
 
 **Catalog / data**
 
-- `Product` and `ProductSize` models, defined in `src/db/schema.js`.
+- `Product` and `ProductSize` models, defined in `backend/src/db/schema.js`.
 - Idempotent importer from `products.json`: preserves business ids (`ZV001`…)
   and size order, upserts in place, and never deletes rows.
 - Product availability is a separate business flag. Sizes remain selectable
@@ -128,7 +127,7 @@ Shipping, Returns, Privacy, Terms, Accessibility, Reset Password, Unsubscribe, A
 
 ## Database environments
 
-`src/config/database.js` decides which database is used, for the app and its scripts alike:
+`backend/src/config/database.js` decides which database is used, for the app and its scripts alike:
 
 | Environment | Database | Requirement |
 | --- | --- | --- |
@@ -140,8 +139,8 @@ The server logs the database it is using when it starts. Demo accounts exist onl
 
 ### How data is stored
 
-`src/db/schema.js` defines every collection, its fields, relationships and indexes. `src/db/models.js`
-builds the Mongoose models from it, and `src/db/client.js` is the data client the routes call
+`backend/src/db/schema.js` defines every collection, its fields, relationships and indexes. `models.js`
+builds the Mongoose models from it, and `client.js` is the data client the routes call
 (`db.order.findUnique({ where, include })`). MongoDB has no foreign keys, automatic numbering or
 column limits, so the client supplies them:
 
@@ -208,7 +207,7 @@ Pre-launch records are kept in `docs/pre-launch` on the owner's machine, outside
 
 ## Demo accounts (development and testing only)
 
-`node scripts/seed-demo-account.cjs` creates the demo accounts in `zaevi_test`. It
+`node backend/scripts/seed-demo-account.cjs` creates the demo accounts in `zaevi_test`. It
 refuses any other database and refuses to run when `NODE_ENV=production`. The
 credentials are in that script. Never add these accounts to production.
 
@@ -232,7 +231,7 @@ in Bodoni Moda and Jost.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set the values:
+Copy `backend/.env.example` to `backend/.env` and set the values:
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
@@ -250,17 +249,17 @@ Copy `.env.example` to `.env` and set the values:
 | `ADMIN_RECOVERY_*` | no | off | Emergency admin sign-in during an email outage; see docs/deployment.md |
 
 The link is validated at startup, and other database schemes are rejected.
-`.env` is git-ignored and blocked from static serving — never commit real
+`backend/.env` is git-ignored and blocked from static serving — never commit real
 credentials.
 
 ### Local setup
 
-Put your Atlas link in `.env` as `MONGODB_URI`, then:
+Put your Atlas link in `backend/.env` as `MONGODB_URI`, then, from the main folder:
 
 ```bash
 npm run db:setup             # collections, indexes, default settings and coupon
 npm run import:products      # loads products.json (12 products, 49 size rows)
-node scripts/seed-demo-account.cjs   # demo accounts, zaevi_test only
+node backend/scripts/seed-demo-account.cjs   # demo accounts, zaevi_test only
 ```
 
 ## Tests
@@ -270,7 +269,7 @@ npm test
 ```
 
 Uses Node's built-in test runner with `supertest`, one file at a time. Mock tests need no database.
-The live-database tests (`tests/*.db.test.js`) run when `MONGODB_URI` reaches a database, and are
+The live-database tests (`backend/tests/*.db.test.js`) run when `MONGODB_URI` reaches a database, and are
 skipped, never failed, otherwise. They refuse any database whose name doesn't end in `zaevi_test`.
 
 They create temporary records, so use a separate database. To do that, name it in the link, set up
@@ -281,12 +280,12 @@ $env:NODE_ENV='test'
 $env:MONGODB_URI='mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/ci_zaevi_test'
 npm run db:setup
 npm run import:products
-node scripts/seed-demo-account.cjs
+node backend/scripts/seed-demo-account.cjs
 npm test
 ```
 
-`tests/data-client.db.test.js` proves the data client's rules and races on a real database, and
-`tests/api-journey.db.test.js` walks every part of the shop over HTTP.
+`backend/tests/data-client.db.test.js` proves the data client's rules and races on a real database, and
+`backend/tests/api-journey.db.test.js` walks every part of the shop over HTTP.
 
 ### Retired stock field
 
@@ -300,19 +299,57 @@ Resend sends email over SMTP. Follow [docs/deployment.md](docs/deployment.md).
 
 ## Project layout
 
-- `src/` — Express app, routes, middleware, validators
-- `src/db/` — collection definitions, Mongoose models, data client, connection
-- `scripts/db-setup.mjs` — creates collections, indexes and default records (`npm run db:setup`)
-- `scripts/import-products.js` — catalog importer
-- `scripts/build-static.mjs` — builds `dist/` for Vercel from the public file allowlist
-- `scripts/create-admin.cjs` — creates an administrator
-- `scripts/seed-demo-account.cjs` — creates the demo accounts in `zaevi_test` only
-- `scripts/check-email.mjs` — sends a test email (`npm run check:email`)
-- `scripts/create-admin-recovery.mjs` — creates emergency admin sign-in settings (`npm run admin:recovery`)
-- `scripts/verify-customer-journey.mjs` — end-to-end customer check on `zaevi_test`
-- `vercel.json`, `render.yaml` — hosting configuration
-- `tests/` — automated tests
-- `*.html`, `style.css`, `main.js`, `products.json`, `assets/` — the storefront
+```text
+zaevi/
+├── frontend/             Everything the browser loads
+│   ├── *.html            Public pages, with the same addresses as ever (/women.html)
+│   ├── admin/            Private pages, served only by the backend after its login check
+│   ├── css/              Stylesheets
+│   ├── js/               Scripts, with third-party libraries in js/vendor/
+│   ├── assets/           Images
+│   ├── data/             products.json, the catalog source and offline fallback
+│   └── robots.txt, sitemap.xml
+├── backend/              The Express API
+│   ├── src/
+│   │   ├── server.js     Starts the app
+│   │   ├── app.js        Builds the app and its routes
+│   │   ├── config/       Environment and database rules
+│   │   ├── db/           Collection definitions, Mongoose models, data client, connection
+│   │   ├── middleware/   Sessions, CSRF, rate limits, security
+│   │   ├── models/       Validation and business rules
+│   │   ├── routes/       API endpoints
+│   │   └── services/     Email, sign-in codes, notifications, emergency sign-in
+│   ├── scripts/          Setup and operator tools
+│   ├── tests/            Automated tests
+│   ├── package.json
+│   └── .env              Your settings, never committed (copy from .env.example)
+├── docs/deployment.md    How to go live
+├── render.yaml           Render settings for the API
+├── vercel.json           Vercel settings for the storefront
+└── package.json          Shortcuts, so npm commands work from the main folder
+```
+
+**Where to change things**
+
+| To change | Go to |
+| --- | --- |
+| A page's content | `frontend/*.html` |
+| The look of the site | `frontend/css/style.css` |
+| Storefront behaviour | `frontend/js/main.js` |
+| An API endpoint | `backend/src/routes/` |
+| What is stored | `backend/src/db/schema.js` |
+| Which files are public | `PUBLIC_ROOT_FILES` in `backend/src/middleware/security.js`, a new public file must be listed here |
+
+**Scripts in `backend/scripts/`**
+
+- `db-setup.mjs`: creates collections, indexes and default records (`npm run db:setup`)
+- `import-products.js`: catalog importer (`npm run import:products`)
+- `build-static.mjs`: builds `dist/` for Vercel from the public file list
+- `create-admin.cjs`: creates an administrator
+- `seed-demo-account.cjs`: creates the demo accounts in `zaevi_test` only
+- `check-email.mjs`: sends a test email (`npm run check:email`)
+- `create-admin-recovery.mjs`: creates emergency admin sign-in settings (`npm run admin:recovery`)
+- `verify-customer-journey.mjs`: end-to-end customer check on `zaevi_test`
 
 ---
 

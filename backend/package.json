@@ -1,0 +1,30 @@
+{
+  "name": "zaevi-backend",
+  "version": "0.1.0",
+  "description": "ZAEVI storefront + backend: Express, Mongoose, MongoDB Atlas; product catalog API, health endpoint, static storefront",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "build:static": "node scripts/build-static.mjs",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-concurrency=1",
+    "check:email": "node scripts/check-email.mjs",
+    "admin:recovery": "node scripts/create-admin-recovery.mjs",
+    "db:setup": "node scripts/db-setup.mjs",
+    "import:products": "node scripts/import-products.js"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.6",
+    "express": "^5.2.1",
+    "mongoose": "^9.12.0",
+    "nodemailer": "^10.3.1"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  }
+}
