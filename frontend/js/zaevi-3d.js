@@ -3,10 +3,11 @@
  *
  * 1. Hero silk: a live WebGL scene of draped crimson satin with drifting champagne dust,
  *    shown only in the homepage banner. It follows the pointer, ripples when clicked,
- *    pauses when off screen, and draws a single still frame for visitors who prefer
- *    reduced motion. Without WebGL the banner keeps its CSS silk gradient.
+ *    pauses when off screen, and moves at half speed for visitors who prefer reduced
+ *    motion. Without WebGL the banner keeps its CSS silk gradient.
  * 2. Coverflow: the New Season pieces on a 3D carousel that can be dragged, swiped,
- *    stepped with the arrow keys or buttons, and that advances slowly on its own.
+ *    stepped with the arrow keys or buttons, and that flows continuously on its own until the visitor
+ *    clicks a card (resting the cursor on the front card pauses it).
  *
  * Site Studio drives the silk through window.zaeviStage.setLook(look):
  *   look.accent     rouge | sapphire | emerald | amber   (silk colour)
@@ -300,7 +301,8 @@
     }
 
     // ---- Loop ----
-    var speed = 1;
+    var GENTLE = reducedMotion ? 0.5 : 1;
+    var speed = GENTLE;
     var time = 6;
     var last = 0;
     var running = false;
@@ -350,10 +352,6 @@
 
     function start() {
       if (running || !visible || !enabled || doc.hidden) return;
-      if (reducedMotion) {
-        renderFrame();
-        return;
-      }
       running = true;
       last = 0;
       raf = requestAnimationFrame(tick);
@@ -370,14 +368,14 @@
       target.uSheen = linear(p.sheen);
       target.uGlint = linear(p.glint);
       var s = MOTION_SPEEDS[look && look.motion];
-      speed = typeof s === 'number' ? s : 1;
+      speed = (typeof s === 'number' ? s : 1) * GENTLE;
       enabled = !(look && look.silkEnabled === false);
       hero.classList.toggle('has-silk', enabled);
       if (!enabled) {
         stop();
         return;
       }
-      if (reducedMotion || !running) {
+      if (!running) {
         ['uDeep', 'uBase', 'uSheen', 'uGlint'].forEach(function (k) { uniforms[k].value.copy(target[k]); });
         renderFrame();
       }
@@ -509,19 +507,34 @@
     var indexEl = ui.querySelector('.coverflow-index');
     var barEl = ui.querySelector('.coverflow-bar b');
 
-    var pos = 0; // continuous position, in cards
-    var goal = 0;
+    // ---- Motion engine ----
+    // The carousel flows: a target position advances steadily and the cards follow it on a
+    // critically damped spring, so speed always changes smoothly, whether the flow starts,
+    // pauses, resumes, is flung by a drag or stepped with the buttons. The geometry uses
+    // smooth curves, so a card turns gradually as it passes the centre, and every card
+    // drifts gently up and down, so the set always looks afloat.
+    var pos = 0; // where the cards are, in pieces
+    var vel = 0; // pieces per second
+    var goal = 0; // where the spring is pulling them
     var spacing = 200;
-    var raf = 0;
     var dragging = false;
     var moved = 0;
     var startX = 0;
     var startPos = 0;
-    var velocity = 0;
+    var velocity = 0; // drag speed, px per ms
     var lastX = 0;
     var lastT = 0;
-    var hovering = false;
     var inView = true;
+    var raf = 0;
+    var lastFrame = 0;
+    var shownCurrent = -1;
+    var captions = cards.map(function (card) { return card.querySelector('.coverflow-caption'); });
+
+    var FLOAT = !reducedMotion; // the idle drift
+    var FLOW_SPEED = reducedMotion ? 0.18 : 0.3; // pieces per second while flowing
+    var STIFFNESS = 4.2; // spring rate; higher settles faster
+    var autoOn = true;
+    var onFront = false;
 
     function wrapDelta(d) {
       d = ((d % n) + n) % n;
@@ -533,42 +546,83 @@
       spacing = w * (window.innerWidth < 720 ? 0.72 : 0.64);
     }
 
-    function layout() {
+    function layout(now) {
+      var t = (now || 0) / 1000;
       var current = ((Math.round(pos) % n) + n) % n;
       cards.forEach(function (card, i) {
         var d = wrapDelta(i - pos);
-        var ad = Math.abs(d);
-        var side = d < 0 ? -1 : 1;
-        var turn = Math.min(ad, 1);
-        var x = d * spacing + side * turn * spacing * 0.18;
-        var z = -ad * 140 - turn * 60;
-        var rot = -side * turn * 42;
-        card.style.transform = 'translate3d(' + x.toFixed(1) + 'px,0,' + z.toFixed(1) + 'px) rotateY(' + rot.toFixed(2) + 'deg)';
-        card.style.zIndex = String(100 - Math.round(ad * 10));
-        card.style.opacity = ad > 3.2 ? '0' : String(Math.max(0, 1 - Math.max(0, ad - 2.2)));
+        var ad = Math.sqrt(d * d + 0.0004);
+        var turn = d / Math.sqrt(d * d + 0.35); // a smooth -1..1, with no corner at the centre
+        var x = d * spacing + turn * spacing * 0.2;
+        var z = -ad * 130 - Math.abs(turn) * 70;
+        var rot = -turn * 40;
+        var bob = FLOAT ? Math.sin(t * 1.05 + i * 0.9) * 6 : 0;
+        var sway = FLOAT ? Math.sin(t * 0.7 + i * 1.7) * 0.5 : 0;
+        card.style.transform = 'translate3d(' + x.toFixed(2) + 'px,' + bob.toFixed(2) + 'px,' + z.toFixed(2) + 'px) rotateY(' + rot.toFixed(3) + 'deg) rotateZ(' + sway.toFixed(3) + 'deg)';
+        card.style.zIndex = String(1000 - Math.round(ad * 100));
+        card.style.opacity = Math.max(0, Math.min(1, 1 - (ad - 2.2))).toFixed(3);
         card.style.setProperty('--shade', Math.min(0.55, ad * 0.22).toFixed(3));
-        card.classList.toggle('is-current', i === current);
         card.tabIndex = ad < 2.5 ? 0 : -1;
+        // The name and price fade in as a piece reaches the front and out as it leaves.
+        var show = Math.max(0, 1 - ad * 2.4);
+        captions[i].style.opacity = show.toFixed(3);
+        captions[i].style.transform = 'translateY(' + ((1 - show) * 8).toFixed(2) + 'px)';
       });
-      indexEl.textContent = String(current + 1).padStart(2, '0');
-      barEl.style.transform = 'scaleX(' + ((current + 1) / n).toFixed(3) + ')';
+      if (current !== shownCurrent) {
+        shownCurrent = current;
+        cards.forEach(function (card, i) { card.classList.toggle('is-current', i === current); });
+        indexEl.textContent = String(current + 1).padStart(2, '0');
+        barEl.style.transform = 'scaleX(' + ((current + 1) / n).toFixed(3) + ')';
+      }
     }
 
-    function animate() {
-      raf = 0;
-      if (!dragging) pos += (goal - pos) * (reducedMotion ? 1 : 0.12);
-      if (Math.abs(goal - pos) < 0.001) pos = goal;
-      layout();
-      if (dragging || pos !== goal) raf = requestAnimationFrame(animate);
+    function flowing() {
+      return autoOn && !onFront && !dragging;
     }
-    function kick() {
-      if (!raf) raf = requestAnimationFrame(animate);
+    function moveTo(target) {
+      goal = target;
+      wake();
     }
     function go(step) {
-      goal = Math.round(goal) + step;
-      kick();
+      moveTo(Math.round(goal) + step);
     }
 
+    function tick(now) {
+      raf = 0;
+      var dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 0.016;
+      lastFrame = now;
+
+      if (dragging) {
+        vel = 0;
+      } else {
+        if (flowing()) goal += FLOW_SPEED * dt;
+        // Critically damped spring, in two half steps for stability on slow frames.
+        for (var k = 0; k < 2; k++) {
+          var h = dt / 2;
+          var acc = STIFFNESS * STIFFNESS * (goal - pos) - 2 * STIFFNESS * vel;
+          vel += acc * h;
+          pos += vel * h;
+        }
+        if (!flowing() && Math.abs(goal - pos) < 0.0005 && Math.abs(vel) < 0.001) {
+          pos = goal;
+          vel = 0;
+        }
+      }
+
+      layout(now);
+
+      // Keep running while anything moves and the carousel can be seen.
+      var busy = dragging || FLOAT || flowing() || pos !== goal;
+      if (busy && inView && !doc.hidden) raf = requestAnimationFrame(tick);
+    }
+    function wake() {
+      if (!raf && inView && !doc.hidden) {
+        lastFrame = 0;
+        raf = requestAnimationFrame(tick);
+      }
+    }
+
+    // ---- Controls ----
     ui.addEventListener('click', function (e) {
       var btn = e.target.closest('[data-step]');
       if (btn) go(Number(btn.getAttribute('data-step')));
@@ -581,8 +635,8 @@
     stageEl.addEventListener('focusin', function (e) {
       var i = cards.indexOf(e.target.closest('.coverflow-card'));
       if (i < 0) return;
-      goal = Math.round(pos) + wrapDelta(i - pos);
-      kick();
+      var d = Math.round(wrapDelta(i - pos));
+      if (d !== 0) moveTo(Math.round(pos) + d);
     });
 
     // Dragging and swiping
@@ -595,7 +649,7 @@
       startPos = pos;
       velocity = 0;
       host.classList.add('is-dragging');
-      kick();
+      wake();
     });
     window.addEventListener('pointermove', function (e) {
       if (!dragging) return;
@@ -612,8 +666,10 @@
       if (!dragging) return;
       dragging = false;
       host.classList.remove('is-dragging');
-      goal = Math.round(pos - velocity * 4);
-      kick();
+      // A fling carries on with the drag's speed and comes to rest on the nearest piece.
+      vel = (-velocity * 1000) / spacing;
+      goal = Math.round(pos + vel * 0.35);
+      wake();
     });
     // A drag never opens a product; a click on a side card brings it forward instead.
     stageEl.addEventListener('click', function (e) {
@@ -627,26 +683,62 @@
       var d = wrapDelta(i - pos);
       if (Math.abs(d) > 0.5) {
         e.preventDefault();
-        goal = Math.round(pos) + Math.round(d);
-        kick();
+        moveTo(Math.round(pos) + Math.round(d));
       }
     });
 
-    // Slow automatic advance, paused while the visitor is engaged or the carousel is off screen.
-    host.addEventListener('pointerenter', function () { hovering = true; });
-    host.addEventListener('pointerleave', function () { hovering = false; });
+    // ---- Automatic motion ----
+    // The pieces flow continuously on their own. Resting the cursor on the front card
+    // brings that card gently to face forward and holds it; moving off lets the flow pick
+    // up again. Clicking or touching any card, dragging, the arrow buttons, the arrow keys
+    // or tabbing to a card hands control to the visitor and stops the flow for the rest of
+    // the visit (the gentle drift stays). For visitors who prefer reduced motion the flow
+    // is slower and the drift is off. Everything waits while the carousel is off screen.
+    function takeOver() {
+      if (!autoOn) return;
+      autoOn = false;
+      host.classList.add('is-user-controlled');
+      if (!dragging) moveTo(Math.round(pos + vel * 0.35));
+    }
+    stageEl.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse' || !autoOn) return;
+      var card = e.target.closest('.coverflow-card');
+      var front = !!card && card.classList.contains('is-current');
+      if (front && !onFront) moveTo(Math.round(pos)); // ease that card to face forward
+      if (!front && onFront) goal = pos; // flow on from where the cards are
+      onFront = front;
+      wake();
+    });
+    stageEl.addEventListener('pointerleave', function () {
+      if (onFront) goal = pos;
+      onFront = false;
+      wake();
+    });
+    stageEl.addEventListener('pointerdown', takeOver);
+    stageEl.addEventListener('focusin', takeOver);
+    ui.addEventListener('click', function (e) { if (e.target.closest('[data-step]')) takeOver(); });
+    host.addEventListener('keydown', function (e) { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') takeOver(); });
+
     if ('IntersectionObserver' in window) {
-      new IntersectionObserver(function (entries) { inView = entries[0].isIntersecting; }).observe(host);
+      new IntersectionObserver(function (entries) {
+        inView = entries[0].isIntersecting;
+        if (inView) {
+          if (flowing()) goal = pos; // resume from where the cards were, without catching up
+          wake();
+        }
+      }).observe(host);
     }
-    if (!reducedMotion) {
-      setInterval(function () {
-        if (!hovering && !dragging && inView && !doc.hidden && !host.contains(doc.activeElement)) go(1);
-      }, 4200);
-    }
+    doc.addEventListener('visibilitychange', function () {
+      if (!doc.hidden) {
+        if (flowing()) goal = pos;
+        wake();
+      }
+    });
 
     window.addEventListener('resize', function () { measure(); layout(); });
     measure();
     layout();
+    wake();
     host.classList.add('is-ready');
     var section = host.closest('.feature');
     if (section) section.classList.add('has-coverflow');

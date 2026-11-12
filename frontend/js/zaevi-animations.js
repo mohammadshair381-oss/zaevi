@@ -367,7 +367,67 @@
     }, { passive: true });
   }
 
-  // A large homepage ticker that picks up speed and leans with the scroll.
+  // Ribbons: every moving band (the announcement bar and Site Studio ribbons) flows here,
+  // without ever stopping. A ribbon slows to a quarter of its speed under the pointer so
+  // its links stay easy to click, then picks up again. Speed and direction come from the
+  // ribbon's own settings (Site Studio writes them as the animation duration and direction).
+  // For visitors who prefer reduced motion, ribbons keep moving at half speed.
+  function initRibbons() {
+    const SELECTOR = '.luxury-ticker-track, .studio-ribbon-track';
+    const gentle = prefersReducedMotion ? 0.5 : 1;
+    const states = new WeakMap();
+    let tracks = [];
+    let refreshQueued = false;
+    const refresh = () => {
+      refreshQueued = false;
+      tracks = Array.from(document.querySelectorAll(SELECTOR));
+    };
+    refresh();
+    new MutationObserver(() => {
+      if (!refreshQueued) {
+        refreshQueued = true;
+        requestAnimationFrame(refresh);
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+
+    const stateOf = (track) => {
+      let s = states.get(track);
+      if (!s) {
+        s = { offset: 0, speed: 0 };
+        states.set(track, s);
+        track.classList.add('is-flowing');
+      }
+      const fallback = track.classList.contains('luxury-ticker-track') ? 36 : 34;
+      s.seconds = parseFloat(track.style.animationDuration) || fallback;
+      s.dir = track.style.animationDirection === 'reverse' ? 1 : -1;
+      return s;
+    };
+
+    let last = 0;
+    const frame = (now) => {
+      requestAnimationFrame(frame);
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+      last = now;
+      if (document.hidden || !dt) return;
+      for (const track of tracks) {
+        if (!track.isConnected) continue;
+        const half = track.scrollWidth / 2;
+        if (!half) continue;
+        const s = stateOf(track);
+        const hovered = track.parentElement && track.parentElement.matches(':hover');
+        const target = (half / s.seconds) * gentle * (hovered ? 0.25 : 1);
+        s.speed += (target - s.speed) * (1 - Math.exp(-dt * 3));
+        s.offset += s.dir * s.speed * dt;
+        if (s.offset <= -half) s.offset += half;
+        if (s.offset > 0) s.offset -= half;
+        track.style.transform = `translate3d(${s.offset.toFixed(2)}px,0,0)`;
+      }
+    };
+    requestAnimationFrame(frame);
+  }
+
+  // A large homepage band of serif type that flows constantly; it picks up speed and
+  // leans with the scroll (for reduced motion it simply flows, more slowly).
   function initMarquee() {
     const anchor = document.querySelector('.home-page .split');
     if (!anchor) return;
@@ -391,7 +451,8 @@
       const moved = window.scrollY - lastY;
       lastY = window.scrollY;
       velocity += (moved - velocity) * 0.12;
-      offset -= (45 + Math.abs(velocity) * 22) * dt;
+      if (prefersReducedMotion) velocity = 0;
+      offset -= ((prefersReducedMotion ? 26 : 45) + Math.abs(velocity) * 22) * dt;
       const half = track.scrollWidth / 2;
       if (half > 0 && -offset >= half) offset += half;
       const lean = Math.max(-7, Math.min(7, velocity * 0.32));
@@ -412,10 +473,11 @@
   }
 
   function initLiveEffects() {
+    initRibbons();
+    initMarquee();
     if (prefersReducedMotion) return;
     initScrollProgress();
     initHeadlineRise();
-    initMarquee();
     watchProductCards();
   }
 

@@ -2147,21 +2147,20 @@ footer h2,footer h4{color:var(--maison-champagne)}
 .coverflow:focus-visible{box-shadow:inset 0 0 0 1px var(--ink)}
 .coverflow-stage{
   position:relative;height:calc(var(--cf-w) * 4 / 3 + 72px);
-  perspective:1700px;perspective-origin:50% 40%;transform-style:preserve-3d;
+  perspective:1700px;perspective-origin:50% 40%;
   touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none;
 }
 .coverflow.is-dragging .coverflow-stage{cursor:grabbing}
 .coverflow-card{
   position:absolute;top:0;left:50%;width:var(--cf-w);margin-left:calc(var(--cf-w) / -2);
-  color:var(--ink);transform-style:preserve-3d;will-change:transform;transition:opacity .45s var(--ease);
+  color:var(--ink);will-change:transform,opacity;
   -webkit-tap-highlight-color:transparent;
 }
 .coverflow-media{position:relative;display:block;aspect-ratio:3/4;overflow:hidden;background:var(--paper-deep);box-shadow:0 46px 60px -44px rgba(23,19,17,.55)}
 .coverflow-media img{width:100%;height:100%;object-fit:cover;transition:transform 1.4s var(--ease-out)}
-.coverflow-media::after{content:"";position:absolute;inset:0;background:rgba(246,242,235,var(--shade,0));transition:background .3s var(--ease)}
+.coverflow-media::after{content:"";position:absolute;inset:0;background:rgba(246,242,235,var(--shade,0))}
 .coverflow-card.is-current:hover .coverflow-media img{transform:scale(1.045)}
-.coverflow-caption{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding-top:16px;opacity:0;transform:translateY(8px);transition:opacity .5s var(--ease),transform .6s var(--ease-out)}
-.coverflow-card.is-current .coverflow-caption{opacity:1;transform:none}
+.coverflow-caption{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding-top:16px;opacity:0;will-change:opacity,transform}
 .coverflow-name{font-family:var(--serif);font-size:22px;font-weight:500;line-height:1.15}
 .coverflow-price{flex:none;font-size:13px;letter-spacing:.06em}
 .coverflow-card:focus-visible{outline:none}
@@ -2224,3 +2223,30 @@ footer h2,footer h4{color:var(--maison-champagne)}
 /* ---------- Finishing ---------- */
 .luxury-ticker{font-weight:400;font-size:10.5px}
 .newsletter h2{text-wrap:balance;max-width:16ch;margin-inline:auto}
+
+/* ---------- Ribbons in constant motion ----------
+   The announcement bar and Site Studio ribbons are moved by js/zaevi-animations.js, so
+   they never stop (they slow under the pointer). A soft band of light also travels along
+   every ribbon and along the promise strip. These keep moving, more slowly, for visitors
+   who prefer reduced motion. */
+.luxury-ticker-track.is-flowing,.studio-ribbon-track.is-flowing{animation:none!important;will-change:transform}
+.studio-ribbon{position:relative}
+.luxury-ticker::after,.studio-ribbon::after,.assurance::before,.assurance::after{
+  content:"";position:absolute;left:0;pointer-events:none;
+  animation:maison-sweep 7s linear infinite;
+}
+/* Announcement bar: a champagne glint along its lower edge */
+.luxury-ticker::after{bottom:0;height:1px;width:22%;background:linear-gradient(90deg,transparent,rgba(216,195,165,.85),transparent)}
+/* Studio ribbons: a broad sheen passes across the band */
+.studio-ribbon::after{top:0;bottom:0;width:18%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.22),transparent);animation-duration:5.5s}
+.studio-ribbon--outline::after{background:linear-gradient(100deg,transparent,rgba(168,16,31,.12),transparent)}
+/* Promise strip: crimson light runs along the top rule, and back along the bottom */
+.assurance{position:relative;overflow:hidden}
+.assurance::before{top:0;height:1px;width:26%;background:linear-gradient(90deg,transparent,var(--rouge),transparent);animation-duration:8s}
+.assurance::after{bottom:0;height:1px;width:26%;background:linear-gradient(90deg,transparent,var(--gold),transparent);animation-duration:11s;animation-direction:reverse}
+@keyframes maison-sweep{from{transform:translateX(-100%)}to{transform:translateX(560%)}}
+@media (prefers-reduced-motion:reduce){
+  .luxury-ticker::after,.studio-ribbon::after,.assurance::before,.assurance::after{
+    animation-duration:14s!important;animation-iteration-count:infinite!important;
+  }
+}
