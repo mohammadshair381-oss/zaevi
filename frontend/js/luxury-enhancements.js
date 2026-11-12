@@ -144,6 +144,10 @@
   // 4. 3D Perspective Card Tilt Physics & Dynamic Lighting Sheen
   // -------------------------------------------------------------------------
   function setup3DCardTilt() {
+    // Tilt only follows a real mouse, and never for visitors who prefer reduced motion.
+    const canTilt = window.matchMedia('(hover: hover) and (pointer: fine)').matches
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!canTilt) return;
     document.querySelectorAll('.product').forEach((card) => {
       if (card.__hasTilt) return;
       card.__hasTilt = true;
@@ -153,7 +157,7 @@
         const x = (e.clientX - rect.left) / rect.width - 0.5;
         const y = (e.clientY - rect.top) / rect.height - 0.5;
         const inner = card.querySelector('.product-card-inner') || card;
-        inner.style.transform = `perspective(1000px) rotateY(${x * 7}deg) rotateX(${-y * 7}deg) translateY(-6px)`;
+        inner.style.transform = `perspective(1100px) rotateY(${(x * 7).toFixed(2)}deg) rotateX(${(-y * 7).toFixed(2)}deg) translateZ(0)`;
         card.style.setProperty('--sheen-x', `${((x + 0.5) * 100).toFixed(1)}%`);
         card.style.setProperty('--sheen-y', `${((y + 0.5) * 100).toFixed(1)}%`);
       });
@@ -374,7 +378,6 @@
         actions.className = 'product-quick-actions';
         actions.innerHTML = `
           <button class="quick-view-btn" type="button" data-qv="${id}">Quick View</button>
-          <button class="quick-3d-btn" type="button" data-3d="${id}" title="Experience in 3D Atelier">✦ 3D</button>
           <button class="quick-add-btn" type="button" data-qa="${id}">+ Bag</button>
         `;
 
@@ -382,18 +385,6 @@
           e.preventDefault();
           e.stopPropagation();
           openQuickView(id);
-        });
-
-        actions.querySelector('.quick-3d-btn')?.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const products = await getCatalogProducts();
-          const p = products.find((x) => x.id === id);
-          if (typeof window.open3DStudio === 'function') {
-            window.open3DStudio({ name: p ? p.name : 'Atelier Garment', id: id });
-          } else {
-            openQuickView(id);
-          }
         });
 
         actions.querySelector('.quick-add-btn')?.addEventListener('click', async (e) => {

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500;600&display=swap');
 
 /* ============================================================
    ZAEVI — Homepage editor
@@ -8,16 +8,16 @@
 :root{
   color-scheme:dark;
   --e-bg:#0e0a0b;
-  --e-surface:#151011;
-  --e-surface2:#1c1416;
-  --e-line:rgba(243,236,228,.14);
-  --e-line-strong:rgba(243,236,228,.3);
-  --e-text:#f3ece4;
-  --e-sub:#b5a99f;
-  --e-accent:#cf0a1e;
+  --e-surface:#14100e;
+  --e-surface2:#1b1613;
+  --e-line:rgba(243,238,231,.14);
+  --e-line-strong:rgba(243,238,231,.3);
+  --e-text:#f3eee7;
+  --e-sub:#aba196;
+  --e-accent:#d8c3a5;
   --e-ease:cubic-bezier(.22,.61,.36,1);
   --e-radius:2px;
-  --e-serif:'Bodoni Moda',Georgia,'Times New Roman',serif;
+  --e-serif:'Cormorant Garamond',Garamond,'Times New Roman',serif;
   --e-sans:'Jost',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;
 }
 
@@ -71,8 +71,8 @@ a{color:inherit;text-decoration:none}
 .e-btn--primary{background:var(--e-text);border-color:var(--e-text);color:var(--e-bg)}
 .e-btn--primary:hover{background:var(--e-accent);border-color:var(--e-accent)}
 .e-btn--ghost{background:transparent}
-.e-btn--danger{border-color:rgba(207,10,30,.35);color:var(--e-accent)}
-.e-btn--danger:hover{background:var(--e-accent);border-color:var(--e-accent);color:#fff}
+.e-btn--danger{border-color:rgba(255,154,162,.4);color:#ff9aa2}
+.e-btn--danger:hover{background:#a8101f;border-color:#a8101f;color:#fff}
 .e-btn--full{width:100%;justify-content:space-between}
 .e-btn__sub{display:block;font-size:10px;color:var(--e-sub);font-weight:400;letter-spacing:.02em;text-transform:none}
 
@@ -124,7 +124,7 @@ a{color:inherit;text-decoration:none}
 .e-item__toggle input{opacity:0;width:0;height:0}
 .e-item__toggle span{
   position:absolute;inset:0;
-  background:rgba(243,236,228,.18);
+  background:rgba(243,238,231,.18);
   border:1px solid var(--e-line);
   border-radius:999px;
   transition:background .2s var(--e-ease);
@@ -202,7 +202,7 @@ a{color:inherit;text-decoration:none}
 .e-switch input{opacity:0;width:0;height:0}
 .e-switch span{
   position:absolute;inset:0;
-  background:rgba(243,236,228,.18);border:1px solid var(--e-line);
+  background:rgba(243,238,231,.18);border:1px solid var(--e-line);
   border-radius:999px;transition:background .2s var(--e-ease);
 }
 .e-switch span::after{
@@ -308,8 +308,8 @@ a{color:inherit;text-decoration:none}
   font-size:9px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
 }
 .m-mini:hover{background:var(--e-text);color:var(--e-bg)}
-.m-mini--danger{border-color:rgba(207,10,30,.35);color:var(--e-accent)}
-.m-mini--danger:hover{background:var(--e-accent);color:#fff}
+.m-mini--danger{border-color:rgba(255,154,162,.4);color:#ff9aa2}
+.m-mini--danger:hover{background:#a8101f;color:#fff}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1180px){

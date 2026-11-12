@@ -12,10 +12,12 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const ACCENTS = {
-    rouge: { main: '#cf0a1e', deep: '#7a0612', light: '#f4606d', soft: '#ffd9d6', rgb: '207, 10, 30' },
-    sapphire: { main: '#1f4fd8', deep: '#122c7a', light: '#7fa2ff', soft: '#dbe5ff', rgb: '31, 79, 216' },
-    emerald: { main: '#0e7d4f', deep: '#075234', light: '#4fd39a', soft: '#d3f7e7', rgb: '14, 125, 79' },
-    amber: { main: '#b45f06', deep: '#6e3a03', light: '#f5a84b', soft: '#ffe9c9', rgb: '180, 95, 6' },
+    // 'rouge' is the stored key of the house default: the crimson of the ZAEVI logo.
+    // Every accent is deep enough to read on the ivory page.
+    rouge: { main: '#a8101f', deep: '#7a0612', light: '#c20d22', soft: '#f4e6e3', rgb: '168, 16, 31' },
+    sapphire: { main: '#1f3a6b', deep: '#13264a', light: '#2d5296', soft: '#e3e8f1', rgb: '31, 58, 107' },
+    emerald: { main: '#1f5a46', deep: '#123b2d', light: '#2b7a5f', soft: '#e1ece6', rgb: '31, 90, 70' },
+    amber: { main: '#8a6a3a', deep: '#5f4826', light: '#a8834f', soft: '#efe6d6', rgb: '138, 106, 58' },
   };
   const TICKER_SECONDS = { slow: 60, normal: 36, fast: 20 };
   const RIBBON_SECONDS = { slow: 60, normal: 34, fast: 18 };

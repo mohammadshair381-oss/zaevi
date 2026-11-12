@@ -114,7 +114,7 @@
     },
   };
 
-  const ACCENTS = [['rouge', 'Rouge', '#cf0a1e'], ['sapphire', 'Sapphire', '#1f4fd8'], ['emerald', 'Emerald', '#0e7d4f'], ['amber', 'Amber', '#b45f06']];
+  const ACCENTS = [['rouge', 'Crimson', '#a8101f'], ['sapphire', 'Midnight', '#1f3a6b'], ['emerald', 'Forest', '#1f5a46'], ['amber', 'Bronze', '#8a6a3a']];
 
   let draft = null;
   let meta = {};
@@ -509,11 +509,10 @@
         type: 'button', class: `st-swatch${look.accent === value ? ' is-on' : ''}`, 'aria-pressed': String(look.accent === value),
         onclick: () => { look.accent = value; changed(); render(); },
       }, el('i', { style: `background:${colour}` }), el('span', { text: label })))),
-      fieldFor(look, { key: 'motion', label: 'Background movement', options: [['still', 'Still'], ['calm', 'Calm'], ['normal', 'Normal'], ['lively', 'Lively']] }),
-      fieldFor(look, { key: 'silkColor', label: 'Silk colour', options: [['silk', 'Brand colour'], ['monolith', 'Black']] }),
-      fieldFor(look, { key: 'silkEnabled', label: 'Show the moving 3D silk', type: 'check' }),
-      fieldFor(look, { key: 'monogramEnabled', label: 'Show the 3D logo on the homepage', type: 'check' }),
-      el('p', { class: 'st-help', text: 'People who have asked their device to reduce motion always see a still version.' }));
+      fieldFor(look, { key: 'silkEnabled', label: 'Show the moving 3D silk in the homepage banner', type: 'check' }),
+      fieldFor(look, { key: 'silkColor', label: 'Silk colour', options: [['silk', 'Brand colour'], ['monolith', 'Noir']] }),
+      fieldFor(look, { key: 'motion', label: 'Silk movement', options: [['still', 'Still'], ['calm', 'Calm'], ['normal', 'Normal'], ['lively', 'Lively']] }),
+      el('p', { class: 'st-help', text: 'The brand colour tints the 3D silk and small details such as the bag count and button highlights. The rest of the website stays ivory and black. People who have asked their device to reduce motion always see a still version.' }));
   }
 
   function render() {

@@ -1,8 +1,12 @@
 /**
  * ==========================================================================
- * ZAEVI — Haute Couture Motion & Live Animation Engine
- * Bespoke luxury cursor, cinematic veil transitions, magnetic micro-interactions,
- * fly-to-bag particle sparks, wishlist heart bursts, and spring physics.
+ * ZAEVI — Motion
+ * Refined motion for the Maison theme: a cursor ring that follows the pointer (the
+ * normal cursor stays visible), buttons that lean towards the pointer, a soft veil
+ * between pages, parallax on large photographs, headlines that rise into place, a
+ * hairline that tracks scroll progress, a serif band that moves with the scroll, and
+ * small confirmations for the bag and the wishlist. Everything stops for visitors who
+ * prefer reduced motion.
  * ==========================================================================
  */
 
@@ -177,7 +181,7 @@
   }
 
   // =========================================================================
-  // 4. Fly-to-Bag Glowing Spark Particle Animation
+  // 4. Bag confirmation
   // =========================================================================
   function triggerFlyToBag(sourceEl) {
     if (prefersReducedMotion) return;
@@ -185,33 +189,12 @@
     const bagIcon = document.querySelector('.bagnum') || document.querySelector('[data-cart]');
     if (!bagIcon) return;
 
-    const sourceRect = (sourceEl || document.body).getBoundingClientRect();
-    const bagRect = bagIcon.getBoundingClientRect();
-    window.zaeviStage?.ripple?.(sourceRect.left + sourceRect.width / 2, sourceRect.top + sourceRect.height / 2, 1.5);
-
-    const startX = sourceRect.left + sourceRect.width / 2;
-    const startY = sourceRect.top + sourceRect.height / 2;
-    const targetX = bagRect.left + bagRect.width / 2;
-    const targetY = bagRect.top + bagRect.height / 2;
-
-    const spark = document.createElement('div');
-    spark.className = 'fly-to-bag-particle';
-    spark.style.left = `${startX}px`;
-    spark.style.top = `${startY}px`;
-    spark.style.setProperty('--tx', `${targetX - startX}px`);
-    spark.style.setProperty('--ty', `${targetY - startY}px`);
-
-    document.body.appendChild(spark);
-
-    setTimeout(() => {
-      spark.remove();
-      // Pulse bag count badge
-      bagIcon.animate([
-        { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 rgba(207, 10, 30, 0))' },
-        { transform: 'scale(1.4)', filter: 'drop-shadow(0 0 10px rgba(207, 10, 30, 0.9))' },
-        { transform: 'scale(1)', filter: 'drop-shadow(0 0 0 rgba(207, 10, 30, 0))' },
-      ], { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
-    }, 720);
+    // A quiet confirmation: the bag count swells once.
+    bagIcon.animate([
+      { transform: 'scale(1)' },
+      { transform: 'scale(1.3)' },
+      { transform: 'scale(1)' },
+    ], { duration: 500, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
   }
 
   window.triggerFlyToBag = triggerFlyToBag;
@@ -225,41 +208,17 @@
   });
 
   // =========================================================================
-  // 5. Wishlist Heart Particle Burst
+  // 5. Wishlist confirmation
   // =========================================================================
   function triggerWishlistBurst(btn) {
     if (prefersReducedMotion || !btn) return;
 
-    const rect = btn.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-
-    // Bounce the heart button
+    // A small, single pulse of the heart.
     btn.animate([
       { transform: 'scale(1)' },
-      { transform: 'scale(1.45)' },
-      { transform: 'scale(0.92)' },
+      { transform: 'scale(1.18)' },
       { transform: 'scale(1)' }
-    ], { duration: 450, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
-
-    // Burst 8 golden particles
-    const particleCount = 8;
-    for (let i = 0; i < particleCount; i++) {
-      const angle = (i / particleCount) * Math.PI * 2;
-      const distance = 28 + Math.random() * 18;
-      const dx = Math.cos(angle) * distance;
-      const dy = Math.sin(angle) * distance;
-
-      const p = document.createElement('div');
-      p.className = 'wish-burst-particle';
-      p.style.left = `${cx}px`;
-      p.style.top = `${cy}px`;
-      p.style.setProperty('--dx', `${dx}px`);
-      p.style.setProperty('--dy', `${dy}px`);
-
-      document.body.appendChild(p);
-      setTimeout(() => p.remove(), 700);
-    }
+    ], { duration: 420, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
   }
 
   window.triggerWishlistBurst = triggerWishlistBurst;
@@ -277,12 +236,6 @@
   function initScrollAnimations() {
     if (prefersReducedMotion) return;
 
-    // Editorial titles shimmer
-    const heroTitle = document.querySelector('.hero h1') || document.querySelector('.display');
-    if (heroTitle && !heroTitle.classList.contains('luxury-shimmer')) {
-      heroTitle.classList.add('luxury-shimmer');
-    }
-
     // Parallax on scroll for split hero & feature backgrounds
     const parallaxBgs = document.querySelectorAll('.hero-bg, .feature-img .bg, .tile .bg');
     if (parallaxBgs.length) {
@@ -291,8 +244,8 @@
         parallaxBgs.forEach((bg) => {
           const rect = bg.parentElement.getBoundingClientRect();
           if (rect.top < vh && rect.bottom > 0) {
-            const offset = (rect.top + rect.height / 2 - vh / 2) * -0.035;
-            bg.style.transform = `translateY(${offset.toFixed(1)}px) scale(1.09)`;
+            const offset = (rect.top + rect.height / 2 - vh / 2) * -0.03;
+            bg.style.transform = `translateY(${offset.toFixed(1)}px) scale(1.06)`;
           }
         });
       }, { passive: true });
@@ -421,7 +374,7 @@
     const band = document.createElement('div');
     band.className = 'fx-marquee';
     band.setAttribute('aria-hidden', 'true');
-    const phrase = '<span>The Art of Elegance</span><i>✦</i><span>Autumn / Winter 2026</span><i>✦</i>';
+    const phrase = '<span>The Art of Elegance</span><i>✦</i><span>Made to Order</span><i>✦</i><span>Autumn / Winter 2026</span><i>✦</i>';
     band.innerHTML = `<div class="fx-marquee-track">${phrase.repeat(6)}</div>`;
     anchor.parentNode.insertBefore(band, anchor);
     const track = band.firstElementChild;
@@ -462,7 +415,6 @@
     if (prefersReducedMotion) return;
     initScrollProgress();
     initHeadlineRise();
-    initPointerEffects();
     initMarquee();
     watchProductCards();
   }

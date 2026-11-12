@@ -1,31 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=Jost:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500;600&display=swap');
 
 /* ============================================================
    ZAEVI — Executive Admin Console Design System
-   Nocturne Rouge workspace, matching the storefront theme.
+   Maison workspace: a warm espresso console with champagne details, matching the storefront.
    ============================================================ */
 
 :root {
   color-scheme: dark;
   --admin-side: 256px;
   --admin-radius: 2px;
-  --admin-surface: #171112;
-  --admin-surface-2: #1f1719;
-  --zaevi-gold: #cf0a1e;
-  --zaevi-gold-light: #ffd9d6;
-  --zaevi-gold-dark: #f4606d;
-  --zaevi-obsidian: #f3ece4;
-  --zaevi-charcoal: #1f1719;
+  --admin-surface: #171311;
+  --admin-surface-2: #1e1916;
+  --zaevi-gold: #d8c3a5;
+  --zaevi-gold-light: #f3eadb;
+  --zaevi-gold-dark: #e6d6bd;
+  --zaevi-obsidian: #f3eee7;
+  --zaevi-charcoal: #1e1916;
   --zaevi-paper: #0e0a0b;
-  --zaevi-hairline: rgba(243, 236, 228, 0.12);
-  --ink: #f3ece4;
-  --ink-2: #ddd3c9;
-  --on-ink: #0b0708;
-  --muted: #b5a99f;
-  --line: rgba(243, 236, 228, 0.12);
-  --line-strong: rgba(243, 236, 228, 0.26);
-  --paper-soft: #1f1719;
-  --paper-deep: #2a1f22;
+  --zaevi-hairline: rgba(243,238,231, 0.12);
+  --ink: #f3eee7;
+  --ink-2: #ddd5ca;
+  --on-ink: #0f0c0b;
+  --muted: #aba196;
+  --line: rgba(243,238,231, 0.12);
+  --line-strong: rgba(243,238,231, 0.26);
+  --paper-soft: #1e1916;
+  --paper-deep: #2a231f;
   --danger: #ff9aa2;
   --success: #7fd6a3;
 }
@@ -64,7 +64,7 @@ h1, h2, h3, p { margin: 0; }
   display: flex;
   flex-direction: column;
   padding: 34px 22px 26px;
-  background: linear-gradient(180deg, #2a070d 0%, #0a0506 62%);
+  background: linear-gradient(180deg, #231c18 0%, #0c0a09 62%);
   color: #fff;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   overflow-y: auto;
@@ -94,7 +94,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .side a.active {
   color: #fff;
-  background: rgba(207, 10, 30, 0.24);
+  background: rgba(216,195,165, 0.24);
   border-left: 2px solid var(--zaevi-gold);
   font-weight: 600;
 }
@@ -124,7 +124,7 @@ h1, h2, h3, p { margin: 0; }
   border-bottom: 1px solid var(--zaevi-hairline);
 }
 .adminhead h1 {
-  font-family: 'Bodoni Moda', Georgia, serif;
+  font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif;
   font-size: clamp(38px, 4.4vw, 54px);
   font-weight: 300;
   line-height: 0.95;
@@ -161,7 +161,7 @@ h1, h2, h3, p { margin: 0; }
 .stat:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-  border-color: rgba(207, 10, 30, 0.6);
+  border-color: rgba(216,195,165, 0.6);
 }
 .stat::after {
   content: "";
@@ -183,7 +183,7 @@ h1, h2, h3, p { margin: 0; }
 .stat strong {
   display: block;
   margin-top: 10px;
-  font-family: 'Bodoni Moda', Georgia, serif;
+  font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif;
   font-size: clamp(32px, 3.4vw, 44px);
   font-weight: 400;
   line-height: 1;
@@ -211,7 +211,7 @@ h1, h2, h3, p { margin: 0; }
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 .panel h2 {
-  font-family: 'Bodoni Moda', Georgia, serif;
+  font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif;
   font-size: clamp(24px, 2.4vw, 32px);
   font-weight: 400;
   line-height: 1.05;
@@ -233,7 +233,7 @@ h1, h2, h3, p { margin: 0; }
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
-  border-bottom: 1px solid rgba(243, 236, 228, 0.12);
+  border-bottom: 1px solid rgba(243,238,231, 0.12);
   white-space: nowrap;
   background: var(--admin-surface-2);
 }
@@ -243,7 +243,7 @@ h1, h2, h3, p { margin: 0; }
   vertical-align: middle;
 }
 .table tbody tr:last-child td { border-bottom: 0; }
-.table tbody tr:hover { background: rgba(243, 236, 228, 0.04); }
+.table tbody tr:hover { background: rgba(243,238,231, 0.04); }
 
 /* Status Badges */
 .status {
@@ -263,7 +263,7 @@ h1, h2, h3, p { margin: 0; }
 .pagebtn {
   min-height: 36px;
   padding: 8px 16px;
-  border: 1px solid rgba(243, 236, 228, 0.18);
+  border: 1px solid rgba(243,238,231, 0.18);
   background: var(--admin-surface);
   color: var(--zaevi-obsidian);
   font-size: 10px;
@@ -276,7 +276,7 @@ h1, h2, h3, p { margin: 0; }
 .pagebtn:hover:not(:disabled) {
   background: var(--zaevi-gold);
   border-color: var(--zaevi-gold);
-  color: #fff;
+  color: #171311;
 }
 .pagebtn:disabled {
   opacity: 0.4;
@@ -320,7 +320,7 @@ h1, h2, h3, p { margin: 0; }
 .denied strong {
   display: block;
   margin-bottom: 10px;
-  font-family: 'Bodoni Moda', Georgia, serif;
+  font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif;
   font-size: 32px;
   font-weight: 400;
   line-height: 1;
@@ -403,13 +403,13 @@ h1, h2, h3, p { margin: 0; }
     top: 0;
     z-index: 10;
     padding: 16px 20px;
-    background: #0a0506;
+    background: #0c0a09;
     color: #fff;
     font-size: 10.5px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
   }
-  .adminnav strong { font-family: 'Bodoni Moda', Georgia, serif; font-size: 22px; }
+  .adminnav strong { font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif; font-size: 22px; }
   .main { padding: 24px 18px 56px; }
   .table { min-width: 720px; }
   .adminhead { align-items: flex-start; flex-direction: column; gap: 8px; }
@@ -433,7 +433,7 @@ textarea:not(.filter) {
 }
 input::placeholder, textarea::placeholder { color: var(--muted); }
 .table th { color: var(--muted); }
-.panel h3 { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; color: var(--ink); margin: 0 0 12px; }
+.panel h3 { font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif; font-weight: 400; color: var(--ink); margin: 0 0 12px; }
 
 /* ---------- Motion ---------- */
 @media (prefers-reduced-motion: no-preference) {
@@ -468,7 +468,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
     overflow-x: auto;
     overflow-y: hidden;
     border-right: 0;
-    border-bottom: 1px solid rgba(243, 236, 228, 0.12);
+    border-bottom: 1px solid rgba(243,238,231, 0.12);
     -webkit-overflow-scrolling: touch;
   }
   .side img { width: 72px; margin: 0 10px 0 2px; flex: none; }
@@ -492,22 +492,22 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .adminhead h1 { font-size: clamp(30px, 3.4vw, 44px); text-transform: none; }
 .sectionhelp { margin-top: 6px; color: var(--muted); font-size: 15px; }
 .pagebtn { text-decoration: none; display: inline-flex; align-items: center; }
-.pagebtn--primary { background: var(--zaevi-gold); border-color: var(--zaevi-gold); color: #fff; }
+.pagebtn--primary { background: var(--zaevi-gold); border-color: var(--zaevi-gold); color: #171311; }
 .pagebtn--primary:hover:not(:disabled) { filter: brightness(1.12); }
 .quickactions, .panel-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .pagebtn + .pagebtn { margin-left: 0; }
 .table .pagebtn + .pagebtn { margin-left: 6px; }
 .attention { margin-bottom: 22px; }
-.attention h2 { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; font-size: 24px; margin-bottom: 10px; color: var(--ink); }
+.attention h2 { font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif; font-weight: 400; font-size: 24px; margin-bottom: 10px; color: var(--ink); }
 .attention-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .attention-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 16px; background: var(--admin-surface); border: 1px solid var(--zaevi-gold); border-radius: 2px; text-align: left; transition: background 0.2s; }
 .attention-card:hover { background: var(--admin-surface-2); }
-.attention-card strong { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; font-size: 30px; line-height: 1; }
+.attention-card strong { font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif; font-weight: 400; font-size: 30px; line-height: 1; }
 .attention-card span { font-size: 15px; color: var(--ink); }
 .attention-card small { font-size: 13px; color: var(--muted); }
 .muted-line { color: var(--muted); }
 .product-form { margin-bottom: 22px; padding: 18px; background: var(--admin-surface-2); border: 1px solid var(--zaevi-hairline); }
-.product-form h3 { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 400; font-size: 22px; margin: 0 0 14px; }
+.product-form h3 { font-family: 'Cormorant Garamond',Garamond,'Times New Roman',serif; font-weight: 400; font-size: 22px; margin: 0 0 14px; }
 .product-grid-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-bottom: 14px; }
 .product-grid-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .product-grid-form .span2 { grid-column: 1 / -1; }

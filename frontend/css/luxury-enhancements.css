@@ -4,27 +4,27 @@
    ========================================================================== */
 
 /* ---------- Luxury Tokens ----------
-   Legacy names retained: --zaevi-gold* hold the crimson accent, --zaevi-obsidian is
-   the primary text colour, and --zaevi-noir is the raised dark fill. */
+   Maison theme. Legacy names retained: --zaevi-gold* hold the house crimson accent,
+   --zaevi-obsidian is the primary text colour, and --zaevi-noir is the espresso fill. */
 :root {
-  --zaevi-gold: #cf0a1e;
-  --zaevi-gold-light: #ffd9d6;
-  --zaevi-gold-dark: #f4606d;
-  --zaevi-gold-glow: rgba(207, 10, 30, 0.3);
-  --zaevi-obsidian: #f3ece4;
-  --zaevi-noir: #1a1214;
-  --zaevi-charcoal: #1f1719;
-  --zaevi-silk: #151011;
-  --zaevi-paper: #0b0708;
-  --zaevi-parchment: #1f1719;
-  --zaevi-hairline: rgba(243, 236, 228, 0.12);
-  --zaevi-hairline-strong: rgba(243, 236, 228, 0.26);
-  --zaevi-hairline-gold: rgba(207, 10, 30, 0.45);
-  --zaevi-shadow-luxury: 0 30px 90px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.3);
-  --zaevi-shadow-hover: 0 40px 120px rgba(0, 0, 0, 0.65), 0 16px 40px rgba(122, 6, 18, 0.35);
-  --zaevi-font-serif: 'Bodoni Moda', 'Didot', 'Bodoni MT', Georgia, serif;
-  --zaevi-font-display: 'Bodoni Moda', 'Didot', Georgia, serif;
-  --zaevi-font-sans: 'Jost', 'Century Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
+  --zaevi-gold: #a8101f;
+  --zaevi-gold-light: #f4e6e3;
+  --zaevi-gold-dark: #7a0612;
+  --zaevi-gold-glow: rgba(168,16,31, 0.18);
+  --zaevi-obsidian: #171311;
+  --zaevi-noir: #171311;
+  --zaevi-charcoal: #2a2420;
+  --zaevi-silk: #fbf9f5;
+  --zaevi-paper: #f6f2eb;
+  --zaevi-parchment: #ebe4d8;
+  --zaevi-hairline: rgba(23,19,17, 0.12);
+  --zaevi-hairline-strong: rgba(23,19,17, 0.28);
+  --zaevi-hairline-gold: rgba(156,122,74, 0.45);
+  --zaevi-shadow-luxury: 0 30px 70px -40px rgba(43,30,20, 0.35);
+  --zaevi-shadow-hover: none;
+  --zaevi-font-serif: 'Cormorant Garamond','Cormorant',Garamond,'Times New Roman',serif;
+  --zaevi-font-display: 'Cormorant Garamond','Cormorant',Garamond,'Times New Roman',serif;
+  --zaevi-font-sans: 'Jost', 'Futura', 'Century Gothic', -apple-system, BlinkMacSystemFont, sans-serif;
   --zaevi-ease-couture: cubic-bezier(0.16, 1, 0.3, 1);
   --zaevi-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -35,8 +35,8 @@ h1, h2, h3, .display {
 }
 .display {
   font-family: var(--zaevi-font-serif) !important;
-  font-weight: 300 !important;
-  letter-spacing: -0.03em !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.01em !important;
 }
 .hero h1, .pagehero h1 {
   font-family: var(--zaevi-font-serif) !important;
@@ -53,8 +53,8 @@ h1, h2, h3, .display {
   left: 0;
   right: 0;
   height: var(--zaevi-ticker-h);
-  background: #070405;
-  color: var(--ink-2);
+  background: #171311;
+  color: #e9e2d8;
   overflow: hidden;
   white-space: nowrap;
   font-family: var(--zaevi-font-sans);
@@ -65,7 +65,7 @@ h1, h2, h3, .display {
   display: flex;
   align-items: center;
   z-index: 600;
-  border-bottom: 1px solid rgba(207, 10, 30, 0.22);
+  border-bottom: 1px solid rgba(255,255,255, 0.06);
   user-select: none;
   transition: transform 0.45s var(--zaevi-ease-couture);
 }
@@ -80,7 +80,7 @@ h1, h2, h3, .display {
   align-items: center;
   gap: 8px;
   padding: 0 32px;
-  color: var(--ink-2);
+  color: #e9e2d8;
   text-decoration: none;
   cursor: pointer;
   transition: color 0.25s var(--zaevi-ease-couture), text-shadow 0.25s ease;
@@ -88,13 +88,13 @@ h1, h2, h3, .display {
 .luxury-ticker-item:hover,
 .luxury-ticker-item:focus-visible {
   color: #ffffff;
-  text-shadow: 0 0 12px rgba(207, 10, 30, 0.55);
+  text-shadow: none;
 }
 .luxury-ticker-item .ticker-arrow {
   display: inline-block;
   font-family: var(--zaevi-font-sans);
   font-size: 12px;
-  color: var(--zaevi-gold-dark);
+  color: #d8c3a5;
   transition: transform 0.25s var(--zaevi-ease-couture), color 0.25s;
 }
 .luxury-ticker-item:hover .ticker-arrow,
@@ -103,13 +103,13 @@ h1, h2, h3, .display {
   color: #ffffff;
 }
 .luxury-ticker-item:focus-visible {
-  outline: 1px solid var(--zaevi-gold);
+  outline: 1px solid #d8c3a5;
   outline-offset: -2px;
 }
 .luxury-ticker-item::after {
   content: "✦";
   margin-left: 32px;
-  color: var(--zaevi-gold-dark);
+  color: #d8c3a5;
   font-size: 8px;
   opacity: 0.65;
 }
@@ -177,8 +177,8 @@ body.has-hero .nav:not(.light) {
 }
 .nav.light,
 body .nav.light {
-  background: rgba(11, 7, 8, 0.82) !important;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45) !important;
+  background: rgba(246,242,235, 0.94) !important;
+  box-shadow: 0 1px 0 var(--zaevi-hairline) !important;
 }
 .nav .brand img {
   transition: transform 0.35s var(--zaevi-ease-couture), opacity 0.35s;
@@ -189,12 +189,9 @@ body .nav.light {
 .links a {
   transition: color 0.25s var(--zaevi-ease-couture), opacity 0.25s;
 }
-.links a:hover {
-  color: #fff !important;
-}
 .links a::after {
-  background: var(--zaevi-gold) !important;
-  height: 1.5px !important;
+  background: currentColor !important;
+  height: 1px !important;
 }
 .bagnum {
   background: var(--zaevi-gold);
@@ -219,8 +216,8 @@ body .nav.light {
   border-radius: 2px;
 }
 .product:hover .product-card-inner {
-  transform: translateY(-6px);
-  box-shadow: var(--zaevi-shadow-hover);
+  transform: none;
+  box-shadow: none;
 }
 .product-img {
   position: relative;
@@ -232,7 +229,7 @@ body .nav.light {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at var(--sheen-x, 50%) var(--sheen-y, 50%), rgba(255, 255, 255, 0.28) 0%, rgba(207, 10, 30, 0.12) 30%, transparent 65%),
+  background: radial-gradient(circle at var(--sheen-x, 50%) var(--sheen-y, 50%), rgba(255, 255, 255, 0.28) 0%, rgba(167,139,250, 0.12) 30%, transparent 65%),
               linear-gradient(180deg, transparent 65%, rgba(0, 0, 0, 0.55) 100%);
   opacity: 0;
   transition: opacity 0.35s ease;
@@ -265,18 +262,18 @@ body .nav.light {
 }
 .quick-view-btn, .quick-3d-btn, .quick-add-btn {
   flex: 1;
-  background: rgba(11, 7, 8, 0.82);
+  background: rgba(251,249,245, 0.94);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(243, 236, 228, 0.2);
+  border: 0;
   color: var(--zaevi-obsidian);
   padding: 10px 4px;
   font-family: var(--zaevi-font-sans);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   text-align: center;
-  border-radius: 2px;
+  border-radius: 0;
   cursor: pointer;
   transition: all 0.25s var(--zaevi-ease-couture);
 }
@@ -294,7 +291,7 @@ body .nav.light {
   background: var(--zaevi-gold);
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 4px 14px rgba(207, 10, 30, 0.55);
+  box-shadow: none;
 }
 .quick-add-btn {
   background: var(--zaevi-obsidian);
@@ -318,7 +315,7 @@ body .nav.light {
   justify-content: center;
   gap: 10px;
   padding: 14px 22px;
-  background: linear-gradient(135deg, #3a0710 0%, #12060a 100%);
+  background: #171311;
   color: var(--zaevi-gold-light);
   border: 1px solid var(--zaevi-gold);
   border-radius: 2px;
@@ -340,7 +337,7 @@ body .nav.light {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(207, 10, 30, 0.25), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255, 0.18), transparent);
   transition: left 0.75s ease;
 }
 .button--3d-atelier:hover::before {
@@ -350,8 +347,8 @@ body .nav.light {
   background: var(--zaevi-gold);
   color: #fff;
   border-color: var(--zaevi-gold);
-  box-shadow: 0 8px 30px rgba(207, 10, 30, 0.35);
-  transform: translateY(-2px);
+  box-shadow: none;
+  transform: none;
 }
 .button--3d-atelier .studio-sparkle {
   color: var(--zaevi-gold-dark);
@@ -372,8 +369,7 @@ body .nav.light {
   content: "";
   position: absolute;
   inset: -20%;
-  background: radial-gradient(circle at 60% 40%, rgba(207, 10, 30, 0.16) 0%, transparent 65%),
-              radial-gradient(circle at 20% 70%, rgba(122, 6, 18, 0.12) 0%, transparent 55%);
+  background: none;
   animation: heroAuraFloat 14s infinite ease-in-out alternate;
   pointer-events: none;
   z-index: 1;
@@ -385,15 +381,15 @@ body .nav.light {
 
 /* Wishlist Heart Bounce */
 .wish {
-  border: 1px solid rgba(243, 236, 228, 0.16);
-  backdrop-filter: blur(10px);
+  border: 0;
+  backdrop-filter: none;
   transition: transform 0.3s var(--zaevi-ease-bounce), color 0.25s, background 0.25s !important;
 }
 .wish:hover {
-  transform: scale(1.15) !important;
+  transform: none !important;
 }
 .wish[aria-pressed="true"] {
-  color: #cf0a1e !important;
+  color: var(--zaevi-gold) !important;
   background: #fff !important;
   animation: heart-bounce 0.45s var(--zaevi-ease-bounce);
 }
@@ -409,9 +405,9 @@ body .nav.light {
   top: 10px;
   left: 10px;
   z-index: 4;
-  background: rgba(18, 18, 18, 0.88);
-  color: var(--zaevi-gold-light);
-  border: 1px solid rgba(207, 10, 30, 0.35);
+  background: rgba(251,249,245, 0.94);
+  color: var(--zaevi-obsidian);
+  border: 0;
   backdrop-filter: blur(6px);
   padding: 4px 8px;
   font-size: 9px;
@@ -455,7 +451,7 @@ body .nav.light {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1px solid rgba(243, 236, 228, 0.3);
+  border: 1px solid rgba(23,19,17, 0.22);
   display: inline-block;
 }
 
@@ -471,15 +467,15 @@ body .nav.light {
 }
 .bag-shipping-meter .meter-bar {
   height: 3px;
-  background: rgba(243, 236, 228, 0.14);
-  border-radius: 2px;
+  background: rgba(23,19,17, 0.1);
+  border-radius: 0;
   margin-top: 8px;
   overflow: hidden;
   position: relative;
 }
 .bag-shipping-meter .meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--zaevi-gold), #7a0612);
+  background: var(--zaevi-obsidian);
   width: 100%;
   transition: width 0.5s var(--zaevi-ease-couture);
 }
@@ -630,9 +626,9 @@ body .nav.light {
 
 /* Bespoke Atelier Certificate Box on PDP */
 .atelier-crest-box {
-  background: linear-gradient(135deg, #141414 0%, #090909 100%);
+  background: #171311;
   color: #fff;
-  border: 1px solid rgba(207, 10, 30, 0.35);
+  border: 0;
   border-radius: 2px;
   padding: 20px 24px;
   margin-top: 26px;
@@ -647,11 +643,11 @@ body .nav.light {
   font-family: var(--zaevi-font-serif);
   font-size: 54px;
   font-weight: 700;
-  color: rgba(207, 10, 30, 0.04);
+  color: rgba(255,255,255, 0.04);
   pointer-events: none;
 }
 .atelier-crest-title {
-  color: var(--zaevi-gold-dark);
+  color: #d8c3a5;
   font-family: var(--zaevi-font-sans);
   font-size: 10.5px;
   font-weight: 600;
@@ -686,10 +682,10 @@ body .nav.light {
   max-width: 420px;
   background: var(--zaevi-noir);
   color: #fff;
-  border: 1px solid rgba(207, 10, 30, 0.6);
-  border-radius: 2px;
+  border: 0;
+  border-radius: 0;
   padding: 14px 18px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 20px 60px -20px rgba(23,19,17, 0.45);
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -708,7 +704,7 @@ body .nav.light {
   to { transform: translateY(20px); opacity: 0; }
 }
 .zaevi-toast-icon {
-  color: var(--zaevi-gold-dark);
+  color: #d8c3a5;
   font-size: 16px;
   line-height: 1;
 }
@@ -721,7 +717,7 @@ body .nav.light {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   margin-bottom: 3px;
-  color: var(--zaevi-gold-light);
+  color: #d8c3a5;
 }
 .zaevi-toast-desc {
   font-size: 12.5px;
@@ -734,8 +730,8 @@ body .nav.light {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.70);
-  backdrop-filter: blur(8px);
+  background: rgba(23,19,17, 0.42);
+  backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -813,9 +809,9 @@ body .nav.light {
   align-items: center;
   gap: 8px;
   padding: 6px 14px;
-  background: linear-gradient(135deg, #181816, #090909);
-  color: var(--zaevi-gold-dark);
-  border: 1px solid rgba(207, 10, 30, 0.35);
+  background: #171311;
+  color: #d8c3a5;
+  border: 0;
   font-family: var(--zaevi-font-sans);
   font-size: 10.5px;
   font-weight: 600;
@@ -1027,11 +1023,11 @@ body .nav.light {
   background: var(--zaevi-paper);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(243, 236, 228, 0.24);
+  background: rgba(23,19,17, 0.22);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--zaevi-gold);
+  background: rgba(23,19,17, 0.45);
 }
 
 /* ---------- Global Haute-Couture Accessibility & Polish ---------- */
@@ -1057,11 +1053,11 @@ body .button--primary {
 }
 .button--primary:hover,
 body .button--primary:hover {
-  background: var(--zaevi-gold);
-  border-color: var(--zaevi-gold);
+  background: var(--rouge-deep);
+  border-color: var(--rouge-deep);
   color: #fff;
-  box-shadow: 0 14px 44px rgba(207, 10, 30, 0.38);
-  transform: translateY(-1px);
+  box-shadow: none;
+  transform: none;
 }
 .button--secondary,
 body .button--secondary {
@@ -1081,16 +1077,16 @@ body .button--secondary:hover {
 .forminput:focus,
 .acct-field input:focus,
 .search input:focus {
-  border-color: var(--zaevi-gold) !important;
+  border-color: var(--zaevi-obsidian) !important;
   outline: none;
 }
 
 /* Quick Actions Button Elevations */
 .quick-view-btn:hover,
 .quick-add-btn:hover {
-  background: var(--zaevi-gold) !important;
-  color: #fff !important;
-  border-color: var(--zaevi-gold) !important;
+  background: var(--zaevi-obsidian) !important;
+  color: var(--on-ink) !important;
+  border-color: var(--zaevi-obsidian) !important;
 }
 
 /* Mobile navigation drawer refinement */
@@ -1098,12 +1094,11 @@ body .button--secondary:hover {
   transition: color 0.2s ease, padding-left 0.2s ease;
 }
 .mobilemenu .mobile-links a:hover {
-  color: var(--zaevi-gold-dark) !important;
+  color: var(--zaevi-gold) !important;
   padding-left: 6px;
 }
 .mobilemenu .mobile-close:hover {
-  border-color: var(--zaevi-gold);
-  color: var(--zaevi-gold-dark);
+  border-color: var(--zaevi-obsidian);
 }
 
 /* ---------- Catalog Filter & Repertoire Upgrades ---------- */
@@ -1121,7 +1116,7 @@ body .button--secondary:hover {
 .filter:hover,
 .filter.active {
   color: var(--ink) !important;
-  border-bottom-color: var(--zaevi-gold) !important;
+  border-bottom-color: var(--ink) !important;
 }
 .sort {
   border-bottom-color: var(--zaevi-hairline-strong) !important;
@@ -1132,7 +1127,7 @@ body .button--secondary:hover {
   transition: border-color 0.25s;
 }
 .sort:focus {
-  border-bottom-color: var(--zaevi-gold) !important;
+  border-bottom-color: var(--ink) !important;
 }
 
 /* ---------- Luxury Shopping Bag Drawer Polish ---------- */
@@ -1141,8 +1136,8 @@ body .button--secondary:hover {
   transition: background-color 0.25s;
 }
 .cartpic {
-  border-radius: 2px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  box-shadow: none;
 }
 .cartname {
   font-family: var(--zaevi-font-serif) !important;
@@ -1163,8 +1158,8 @@ body .button--secondary:hover {
   padding-top: 20px !important;
 }
 .drawer .checkout {
-  border-radius: 2px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* ---------- Reviews Section Luxury Polish ---------- */
@@ -1189,11 +1184,11 @@ body .button--secondary:hover {
 .manifesto {
   position: relative;
   overflow: hidden;
-  background: transparent !important;
-  color: var(--ink) !important;
+  background: #171311 !important;
+  color: #f3eee7 !important;
 }
 .manifesto .eyebrow {
-  color: var(--zaevi-gold-dark) !important;
+  color: #d8c3a5 !important;
 }
 .split .tile {
   position: relative;
