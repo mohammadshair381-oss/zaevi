@@ -1,4 +1,17 @@
-﻿// ============================================================
+﻿// ZAEVI clean addresses: a page opened at its old address (/about.html,
+// /index.html) shows its clean address (/about, /) without reloading. The query string
+// and the #fragment are kept as they are, so links such as /product.html?id=… and
+// /reset-password.html?token=… keep working. Only root pages are touched.
+(function(){
+ try{
+   var match=/^\/([a-z0-9-]+)\.html$/.exec(location.pathname);
+   if(!match||!window.history||typeof history.replaceState!=='function')return;
+   var cleanPath=match[1]==='index'?'/':'/'+match[1];
+   history.replaceState(history.state,'',cleanPath+location.search+location.hash);
+ }catch(e){}
+})();
+
+// ============================================================
 // ZAEVI — Customer Frontend Integration (Phase 5)
 // Uses the existing backend APIs:
 //   POST /api/auth/login, POST /api/auth/register, POST /api/auth/logout, GET /api/auth/me
@@ -149,7 +162,7 @@ function renderCart(){
  const box=$('.cartbody');if(!box)return;
  let html='';
  if(window.__zaeviJustAdded){html+='<div class="cart-toast" role="status">Added to your bag</div>';window.__zaeviJustAdded=false}
- if(!cart.length){html+='<div class="cart-empty"><strong>Your bag is empty</strong><p>Discover the ZAEVI collection.</p><a class="arrow" href="collections.html">View the collection <b></b></a></div>'}
+ if(!cart.length){html+='<div class="cart-empty"><strong>Your bag is empty</strong><p>Discover the ZAEVI collection.</p><a class="arrow" href="collections">View the collection <b></b></a></div>'}
  else html+=cart.map((x,i)=>sizeRow(x,i)).join('');
  box.innerHTML=html;
  const total=cart.reduce((s,x)=>s+x.price*x.qty,0);if($('#total'))$('#total').textContent=money(total);
@@ -177,7 +190,7 @@ function changeSize(i,size){
 function card(p){
  const liked=wishlist.includes(p.id);
  return `<article class="product reveal" data-cat="${escapeHtml(p.cat)}" data-name="${escapeHtml(p.name)}" data-price="${escapeHtml(p.price)}">
- <a href="product.html?id=${encodeURIComponent(p.id)}"><div class="product-img"><img class="p1" src="${escapeHtml(p.img)}" alt="" aria-hidden="true" loading="lazy"><img class="p2" src="${escapeHtml(p.hover)}" alt="" aria-hidden="true" loading="lazy"><span class="image-fallback" aria-hidden="true">Image unavailable</span><span class="badge">${+p.id.slice(-3)<=6?'NEW':'HOUSE EDIT'}</span></div><div class="meta"><span>${escapeHtml(p.name)}</span><span>${money(p.price)}</span></div><div class="sub">${escapeHtml(p.cat)} · ${escapeHtml(p.color)}</div></a>
+ <a href="product?id=${encodeURIComponent(p.id)}"><div class="product-img"><img class="p1" src="${escapeHtml(p.img)}" alt="" aria-hidden="true" loading="lazy"><img class="p2" src="${escapeHtml(p.hover)}" alt="" aria-hidden="true" loading="lazy"><span class="image-fallback" aria-hidden="true">Image unavailable</span><span class="badge">${+p.id.slice(-3)<=6?'NEW':'HOUSE EDIT'}</span></div><div class="meta"><span>${escapeHtml(p.name)}</span><span>${money(p.price)}</span></div><div class="sub">${escapeHtml(p.cat)} · ${escapeHtml(p.color)}</div></a>
  <button class="wish" type="button" data-wish="${escapeHtml(p.id)}" data-product-name="${escapeHtml(p.name)}" aria-label="${liked?'Remove':'Add'} ${escapeHtml(p.name)} ${liked?'from':'to'} wishlist" aria-pressed="${liked}"><span aria-hidden="true">${liked?'♥':'♡'}</span></button></article>`;
 }
 // Lets Site Studio sections show products with the same cards as the catalogue.
@@ -235,7 +248,7 @@ function renderHome(){
  grid.innerHTML=products.filter(p=>p.available!==false).slice(0,HOME_LIMIT).map(card).join('');
  bindCards(grid);
 }
-const WISH_EMPTY='<div class="empty-state"><strong>Your wishlist is empty</strong><p>Save pieces as you browse and they will appear here.</p><a class="button button--secondary" href="women.html">DISCOVER THE COLLECTION</a></div>';
+const WISH_EMPTY='<div class="empty-state"><strong>Your wishlist is empty</strong><p>Save pieces as you browse and they will appear here.</p><a class="button button--secondary" href="women">DISCOVER THE COLLECTION</a></div>';
 function renderWishlist(){
  const grid=$('#wishGrid');if(!grid||!products.length)return;
  const list=(Array.isArray(wishlist)?wishlist:[]).map(id=>products.find(p=>p.id===id)).filter(Boolean);
@@ -265,7 +278,7 @@ async function runSearch(q){
  bindCards(box);
 }
 function productNotice(d,title,copy){
- d.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:60px 0"><div class="eyebrow">ZAEVI</div><h1 class="display">'+title+'</h1><p class="copy">'+copy+'</p><a class="arrow" href="collections.html">View the collection <b></b></a></div>';
+ d.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:60px 0"><div class="eyebrow">ZAEVI</div><h1 class="display">'+title+'</h1><p class="copy">'+copy+'</p><a class="arrow" href="collections">View the collection <b></b></a></div>';
 }
 function renderProduct(){
  const d=$('#productDetail');if(!d)return;
@@ -795,7 +808,7 @@ function accountOverviewHtml(st){
     +'<button type="button" class="acct-quick-card" data-account-tab="orders"><strong>My orders</strong><span>See, cancel or return an order</span></button>'
     +'<button type="button" class="acct-quick-card" data-account-tab="track"><strong>Track an order</strong><span>Where is my order now?</span></button>'
     +'<button type="button" class="acct-quick-card" data-account-tab="addresses"><strong>Addresses</strong><span>Add or change where we deliver</span></button>'
-    +'<a class="acct-quick-card" href="contact.html"><strong>Get help</strong><span>Send us a message</span></a>'
+    +'<a class="acct-quick-card" href="contact"><strong>Get help</strong><span>Send us a message</span></a>'
     +'</div>'
     +'<div class="acct-stats">'
     +'<div class="acct-stat"><span class="acct-stat-num">'+active.length+'</span><span class="acct-stat-label">Active orders</span></div>'
@@ -805,7 +818,7 @@ function accountOverviewHtml(st){
     +'<div class="acct-columns">'
     +'<div class="acct-column-main">'
     +'<div class="acct-section-head"><div><div class="eyebrow">IN PROGRESS</div><h2>Active orders</h2></div><button type="button" class="acct-textlink" data-account-tab="orders">View all orders</button></div>'
-    +(active.length?active.slice(0,3).map(accountOrderCard).join(''):accountEmpty('No active orders','When you place an order, its progress will appear here.','<a class="acct-textlink" href="women.html">Explore the collection</a>'))
+    +(active.length?active.slice(0,3).map(accountOrderCard).join(''):accountEmpty('No active orders','When you place an order, its progress will appear here.','<a class="acct-textlink" href="women">Explore the collection</a>'))
     +'</div>'
     +'<aside class="acct-column-side">'
     +'<div class="acct-section-head"><div><div class="eyebrow">LATEST</div><h2>Recent updates</h2></div></div>'
@@ -823,11 +836,11 @@ function accountOrdersHtml(st){
   }).join('')+'</div>';
   if(filter==='returns'){
     return '<section class="acct-panel"><div class="acct-section-head"><div><div class="eyebrow">MY ORDERS</div><h2>Returns &amp; replacements</h2></div></div>'+filterHtml
-      +accountEmpty('Returns and replacements','To return or replace something, open a delivered order under All Orders. You have 14 days from delivery. For anything else, contact us.','<a class="acct-textlink" href="contact.html">Contact Client Services</a>')+'</section>';
+      +accountEmpty('Returns and replacements','To return or replace something, open a delivered order under All Orders. You have 14 days from delivery. For anything else, contact us.','<a class="acct-textlink" href="contact">Contact Client Services</a>')+'</section>';
   }
   return '<section class="acct-panel"><div class="acct-section-head"><div><div class="eyebrow">MY ORDERS</div><h2>Order history</h2></div><span class="acct-count">'+filtered.length+' order'+(filtered.length===1?'':'s')+'</span></div>'
     +filterHtml
-    +(filtered.length?filtered.map(accountOrderCard).join(''):accountEmpty(filter==='all'?'No orders yet':'No '+filter+' orders','Your ZAEVI orders will appear here once they are placed.','<a class="acct-textlink" href="women.html">Explore the collection</a>'))
+    +(filtered.length?filtered.map(accountOrderCard).join(''):accountEmpty(filter==='all'?'No orders yet':'No '+filter+' orders','Your ZAEVI orders will appear here once they are placed.','<a class="acct-textlink" href="women">Explore the collection</a>'))
     +'</section>';
 }
 function accountTrackHtml(st){
@@ -836,7 +849,7 @@ function accountTrackHtml(st){
     +(active.length?active.map(o=>'<article class="acct-track-card"><div class="acct-track-head"><div><span class="acct-ref">'+escapeHtml(o.reference||'')+'</span><h3>'+escapeHtml(accountItemNames(o.items))+'</h3></div>'+accountStatusPill(o)+'</div>'
       +accountTimelineHtml(o)
       +'<p class="acct-note">'+escapeHtml(accountDeliveryEstimate(o))+'</p>'
-      +'<div class="acct-track-actions"><button type="button" class="acct-textlink" data-order-open="'+escapeHtml(o.reference||'')+'">View order details</button><a class="acct-textlink" href="track.html?ref='+encodeURIComponent(o.reference||'')+'">Open public tracking</a></div>'
+      +'<div class="acct-track-actions"><button type="button" class="acct-textlink" data-order-open="'+escapeHtml(o.reference||'')+'">View order details</button><a class="acct-textlink" href="track?ref='+encodeURIComponent(o.reference||'')+'">Open public tracking</a></div>'
       +'</article>').join(''):accountEmpty('No active orders to track','Completed and cancelled orders remain available in My Orders.','<button type="button" class="acct-textlink" data-account-tab="orders">View order history</button>'))
     +'</section>';
 }
@@ -889,7 +902,7 @@ function accountDetailsHtml(st){
     +row('Phone',p.phone)
     +row('Member since',accountDate(p.createdAt))
     +'</div>'
-    +'<div class="acct-detail-note"><h3>Profile changes</h3><p>Name, email and password changes are handled personally by Client Services so your account and order records stay consistent.</p><a class="acct-textlink" href="contact.html">Contact Client Services</a></div>'
+    +'<div class="acct-detail-note"><h3>Profile changes</h3><p>Name, email and password changes are handled personally by Client Services so your account and order records stay consistent.</p><a class="acct-textlink" href="contact">Contact Client Services</a></div>'
     +'</section>';
 }
 const ACCOUNT_REQUEST_LABELS={pending:'Waiting for our reply',approved:'Approved',rejected:'Declined',received:'Received',in_transit:'On its way back',shipped:'On its way',delivered:'Delivered',completed:'Completed',refunded:'Refunded',processed:'Refund sent',not_applicable:''};
@@ -931,8 +944,8 @@ function accountOrderDetailHtml(st){
     + (Array.isArray(o.replacementRequests)&&o.replacementRequests.length?'<div class="acct-detail-block"><h3>Replacements</h3>'+o.replacementRequests.map(r=>'<p class="acct-note">'+escapeHtml(accountRequestLabel(r.status))+'</p>').join('')+'</div>':'')
     + (o.status==='pending'?'<div class="acct-detail-block"><h3>Cancellation</h3><p class="acct-note">This order can be cancelled now.</p><button type="button" class="button button--secondary" data-cancel-direct="'+escapeHtml(o.reference||'')+'">CANCEL ORDER</button></div>':'')
     + (['confirmed','in_production','quality_check','packed'].indexOf(o.status)!==-1&&!o.cancellationRequest?'<details class="acct-detail-block acct-fold"><summary>Ask to cancel this order</summary><form id="cancelRequestForm" class="acct-form"><input type="hidden" name="reference" value="'+escapeHtml(o.reference||'')+'"><label class="acct-field"><span>Reason</span><textarea name="reason" required></textarea></label><button type="submit" class="add">SEND CANCELLATION REQUEST</button></form></details>':'')
-    + (o.status==='delivered'?'<details class="acct-detail-block acct-fold"><summary>Return an item</summary><p class="acct-note inline-links">You can return items within 14 days of delivery. <a href="returns.html">Returns policy</a></p><form id="returnForm" class="acct-form"><input type="hidden" name="reference" value="'+escapeHtml(o.reference||'')+'"><label class="acct-field"><span>Item</span><select name="orderItemId">'+(o.items||[]).map(i=>'<option value="'+i.id+'">'+escapeHtml(i.productName)+' (max '+i.quantity+')</option>').join('')+'</select></label><label class="acct-field"><span>Quantity</span><input type="number" name="quantity" min="1" value="1"></label><label class="acct-field"><span>Reason</span><input name="reason" required></label><button type="submit" class="add">SEND RETURN REQUEST</button></form></details><details class="acct-detail-block acct-fold"><summary>Replace an item</summary><form id="replacementForm" class="acct-form"><input type="hidden" name="reference" value="'+escapeHtml(o.reference||'')+'"><label class="acct-field"><span>Item</span><select name="orderItemId">'+(o.items||[]).map(i=>'<option value="'+i.id+'">'+escapeHtml(i.productName)+' (max '+i.quantity+')</option>').join('')+'</select></label><label class="acct-field"><span>Quantity</span><input type="number" name="quantity" min="1" value="1"></label><label class="acct-field"><span>Reason</span><input name="reason" required></label><button type="submit" class="add">SEND REPLACEMENT REQUEST</button></form></details>':'')
-    +'<div class="acct-detail-actions"><a class="button button--secondary" href="track.html?ref='+encodeURIComponent(o.reference||'')+'">TRACK ORDER</a><a class="button button--secondary" href="contact.html">CONTACT US</a></div>'
+    + (o.status==='delivered'?'<details class="acct-detail-block acct-fold"><summary>Return an item</summary><p class="acct-note inline-links">You can return items within 14 days of delivery. <a href="returns">Returns policy</a></p><form id="returnForm" class="acct-form"><input type="hidden" name="reference" value="'+escapeHtml(o.reference||'')+'"><label class="acct-field"><span>Item</span><select name="orderItemId">'+(o.items||[]).map(i=>'<option value="'+i.id+'">'+escapeHtml(i.productName)+' (max '+i.quantity+')</option>').join('')+'</select></label><label class="acct-field"><span>Quantity</span><input type="number" name="quantity" min="1" value="1"></label><label class="acct-field"><span>Reason</span><input name="reason" required></label><button type="submit" class="add">SEND RETURN REQUEST</button></form></details><details class="acct-detail-block acct-fold"><summary>Replace an item</summary><form id="replacementForm" class="acct-form"><input type="hidden" name="reference" value="'+escapeHtml(o.reference||'')+'"><label class="acct-field"><span>Item</span><select name="orderItemId">'+(o.items||[]).map(i=>'<option value="'+i.id+'">'+escapeHtml(i.productName)+' (max '+i.quantity+')</option>').join('')+'</select></label><label class="acct-field"><span>Quantity</span><input type="number" name="quantity" min="1" value="1"></label><label class="acct-field"><span>Reason</span><input name="reason" required></label><button type="submit" class="add">SEND REPLACEMENT REQUEST</button></form></details>':'')
+    +'<div class="acct-detail-actions"><a class="button button--secondary" href="track?ref='+encodeURIComponent(o.reference||'')+'">TRACK ORDER</a><a class="button button--secondary" href="contact">CONTACT US</a></div>'
     +'</section>';
 }
 function accountPaymentsHtml(st){
@@ -1363,7 +1376,7 @@ function renderAuthUI(){
         '<button class="add" type="button" onclick="loginUser()">SIGN IN</button>'+
         '<p class="auth-error" id="loginError" role="alert"></p>'+
         '<p class="auth-status" id="logoutMessage" role="status"></p>'+
-        '<p class="auth-alt" id="forgotPasswordLine"><a href="reset-password.html">Forgot your password?</a></p>'+
+        '<p class="auth-alt" id="forgotPasswordLine"><a href="reset-password">Forgot your password?</a></p>'+
         '</div>'+
         '<p class="auth-alt" id="loginAltNotice">New to ZAEVI? <a href="#" onclick="switchAuthTab(\'register\');return false">Create an account</a></p>'+
         '<div class="auth-register" id="registerForm" hidden style="border-top:none;margin-top:0;padding-top:0">'+
@@ -1378,7 +1391,7 @@ function renderAuthUI(){
         '<span style="font-size:11px;color:var(--muted);display:block;margin-top:4px;margin-bottom:8px">Password must be at least 12 characters.</span>'+
         '<button class="add" type="button" onclick="registerUser()">CREATE ACCOUNT</button>'+
         '<p class="auth-alt"><a href="#" onclick="switchAuthTab(\'login\');return false">Sign in instead</a></p>'+
-        '<p class="auth-alt inline-links">Read our <a href="terms.html">Terms</a> and <a href="privacy.html">Privacy Policy</a>.</p>'+
+        '<p class="auth-alt inline-links">Read our <a href="terms">Terms</a> and <a href="privacy">Privacy Policy</a>.</p>'+
         '</div></div>';
       // One-shot notice from a successful logout, rendered into the freshly
       // built sign-in view and then cleared so it never persists across loads.

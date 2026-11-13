@@ -66,35 +66,35 @@
     ticker.setAttribute('aria-label', 'House Announcements');
     ticker.innerHTML = `
       <div class="luxury-ticker-track">
-        <a href="shipping.html" class="luxury-ticker-item" title="Explore Complimentary Worldwide White-Glove Delivery">
+        <a href="shipping" class="luxury-ticker-item" title="Explore Complimentary Worldwide White-Glove Delivery">
           <span>COMPLIMENTARY WORLDWIDE WHITE-GLOVE DELIVERY</span>
           <span class="ticker-arrow" aria-hidden="true">→</span>
         </a>
-        <a href="collections.html" class="luxury-ticker-item" title="View Autumn / Winter 2026 Couture Editions">
+        <a href="collections" class="luxury-ticker-item" title="View Autumn / Winter 2026 Couture Editions">
           <span>AUTUMN / WINTER 2026 COUTURE EDITIONS</span>
           <span class="ticker-arrow" aria-hidden="true">→</span>
         </a>
-        <a href="about.html" class="luxury-ticker-item" title="Discover Bespoke Made-to-Order Atelier Craftsmanship">
+        <a href="about" class="luxury-ticker-item" title="Discover Bespoke Made-to-Order Atelier Craftsmanship">
           <span>BESPOKE MADE-TO-ORDER ATELIER CRAFTSMANSHIP</span>
           <span class="ticker-arrow" aria-hidden="true">→</span>
         </a>
-        <a href="returns.html" class="luxury-ticker-item" title="Learn About 14-Day Complimentary Returns and Exchanges">
+        <a href="returns" class="luxury-ticker-item" title="Learn About 14-Day Complimentary Returns and Exchanges">
           <span>14-DAY COMPLIMENTARY RETURNS &amp; EXCHANGES</span>
           <span class="ticker-arrow" aria-hidden="true">→</span>
         </a>
-        <a href="shipping.html" class="luxury-ticker-item" title="Explore Complimentary Worldwide White-Glove Delivery" aria-hidden="true" tabindex="-1">
+        <a href="shipping" class="luxury-ticker-item" title="Explore Complimentary Worldwide White-Glove Delivery" aria-hidden="true" tabindex="-1">
           <span>COMPLIMENTARY WORLDWIDE WHITE-GLOVE DELIVERY</span>
           <span class="ticker-arrow">→</span>
         </a>
-        <a href="collections.html" class="luxury-ticker-item" title="View Autumn / Winter 2026 Couture Editions" aria-hidden="true" tabindex="-1">
+        <a href="collections" class="luxury-ticker-item" title="View Autumn / Winter 2026 Couture Editions" aria-hidden="true" tabindex="-1">
           <span>AUTUMN / WINTER 2026 COUTURE EDITIONS</span>
           <span class="ticker-arrow">→</span>
         </a>
-        <a href="about.html" class="luxury-ticker-item" title="Discover Bespoke Made-to-Order Atelier Craftsmanship" aria-hidden="true" tabindex="-1">
+        <a href="about" class="luxury-ticker-item" title="Discover Bespoke Made-to-Order Atelier Craftsmanship" aria-hidden="true" tabindex="-1">
           <span>BESPOKE MADE-TO-ORDER ATELIER CRAFTSMANSHIP</span>
           <span class="ticker-arrow">→</span>
         </a>
-        <a href="returns.html" class="luxury-ticker-item" title="Learn About 14-Day Complimentary Returns and Exchanges" aria-hidden="true" tabindex="-1">
+        <a href="returns" class="luxury-ticker-item" title="Learn About 14-Day Complimentary Returns and Exchanges" aria-hidden="true" tabindex="-1">
           <span>14-DAY COMPLIMENTARY RETURNS &amp; EXCHANGES</span>
           <span class="ticker-arrow">→</span>
         </a>
@@ -273,7 +273,7 @@
         <div style="margin-bottom:20px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <span style="font-size:11px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;">SELECT SIZE</span>
-            <a href="size-guide.html" style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);text-decoration:underline;">Size Guide</a>
+            <a href="size-guide" style="font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);text-decoration:underline;">Size Guide</a>
           </div>
           <div class="sizes" id="qvSizes" style="display:flex;gap:8px;flex-wrap:wrap;">
             ${sizes.map((s, idx) => `<button type="button" class="size-btn ${idx === 0 ? 'selected' : ''}" data-size="${s}" style="min-width:44px;height:40px;padding:0 12px;border:1px solid var(--line-strong);background:transparent;color:var(--ink);font-size:12px;cursor:pointer;text-transform:uppercase;">${s}</button>`).join('')}
@@ -282,7 +282,7 @@
 
         <div style="display:flex;gap:10px;margin-top:auto;">
           <button type="button" id="qvAddBtn" class="button button--primary" style="flex:1;min-height:48px;">ADD TO BAG</button>
-          <a href="product.html?id=${encodeURIComponent(p.id)}" class="button button--secondary" style="min-height:48px;">FULL DETAILS</a>
+          <a href="product?id=${encodeURIComponent(p.id)}" class="button button--secondary" style="min-height:48px;">FULL DETAILS</a>
         </div>
 
         <div style="margin-top:20px;padding:10px;background:var(--zaevi-silk);border:1px solid var(--zaevi-hairline);font-size:11.5px;color:var(--muted);line-height:1.6;">
@@ -355,7 +355,7 @@
       card.__hasLuxuryEnhancements = true;
 
       // Extract product ID
-      const link = card.querySelector('a[href*="product.html?id="]');
+      const link = card.querySelector('a[href*="product?id="], a[href*="product.html?id="]');
       if (!link) return;
       const url = new URL(link.href, window.location.origin);
       const id = url.searchParams.get('id');
@@ -652,7 +652,7 @@
       <div style="font-size:15px;line-height:1.9;color:var(--ink-2);">${story.content}</div>
       <div style="margin-top:36px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">ZAEVI EDITORIAL ARCHIVE</span>
-        <a href="collections.html" class="button button--primary" style="padding:10px 20px;">EXPLORE COLLECTION</a>
+        <a href="collections" class="button button--primary" style="padding:10px 20px;">EXPLORE COLLECTION</a>
       </div>
     `;
 
@@ -692,7 +692,7 @@
       return `
         <article class="product reveal in" data-cat="${p.cat}" data-name="${p.name}" data-price="${p.price}">
           <div class="product-card-inner">
-            <a href="product.html?id=${encodeURIComponent(p.id)}">
+            <a href="product?id=${encodeURIComponent(p.id)}">
               <div class="product-img">
                 <img class="p1" src="${p.img}" alt="${p.name}" loading="lazy">
                 <img class="p2" src="${p.hover}" alt="${p.name}" loading="lazy">

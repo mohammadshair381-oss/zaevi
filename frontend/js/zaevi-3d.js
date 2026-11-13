@@ -468,7 +468,7 @@
     var cards = products.map(function (p, i) {
       var a = doc.createElement('a');
       a.className = 'coverflow-card';
-      a.href = 'product.html?id=' + encodeURIComponent(p.id);
+      a.href = 'product?id=' + encodeURIComponent(p.id);
       a.setAttribute('aria-label', p.name + ', ' + formatPrice(p.price) + ' (' + (i + 1) + ' of ' + n + ')');
       a.draggable = false;
       var media = doc.createElement('span');

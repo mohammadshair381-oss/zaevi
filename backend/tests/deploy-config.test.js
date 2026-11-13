@@ -96,8 +96,13 @@ test('vercel.json proxies server routes with the secret and matches the server h
   const config = JSON.parse(read('vercel.json'));
   assert.equal(config.framework, null, 'Vercel must not turn src/server.js into a function');
   assert.equal(config.outputDirectory, 'dist');
-  assert.equal(config.routes.length, 3);
-  for (const route of config.routes) {
+  // Three proxy routes to Render, followed by one clean-address route for storefront
+  // pages (covered in clean-urls.test.js).
+  const proxies = config.routes.filter((route) => String(route.dest).startsWith('${BACKEND_URL}/'));
+  assert.equal(proxies.length, 3);
+  assert.equal(config.routes.length, 4);
+  assert.deepEqual(config.routes.slice(0, 3), proxies, 'the proxy routes come first');
+  for (const route of proxies) {
     assert.deepEqual(route.env, ['BACKEND_URL']);
     assert.match(route.dest, /^\$\{BACKEND_URL\}\//);
     const [transform] = route.transforms;
@@ -105,7 +110,7 @@ test('vercel.json proxies server routes with the secret and matches the server h
     assert.equal(transform.op, 'set');
     assert.deepEqual(transform.env, ['PROXY_SECRET']);
   }
-  const matches = (url) => config.routes.some((route) => new RegExp(route.src).test(url));
+  const matches = (url) => proxies.some((route) => new RegExp(route.src).test(url));
   for (const url of ['/api/products', '/admin', '/admin/', '/admin/studio', '/admin/recovery']) assert.equal(matches(url), true, url);
   for (const url of ['/admin.css', '/css/admin.css', '/admin-recovery.html', '/index.html', '/apidocs']) assert.equal(matches(url), false, url);
   const headers = Object.fromEntries(config.headers[0].headers.map(({ key, value }) => [key, value]));

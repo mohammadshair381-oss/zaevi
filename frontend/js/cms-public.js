@@ -115,10 +115,10 @@
           const price = document.createElement('p');
           price.textContent = '₹' + Number(product.price).toLocaleString('en-IN');
           card.appendChild(price);
-          if (isSafeUrl('/product.html?id=' + encodeURIComponent(product.id))) {
+          if (isSafeUrl('/product?id=' + encodeURIComponent(product.id))) {
             const link = document.createElement('a');
             link.textContent = 'View product';
-            link.href = '/product.html?id=' + encodeURIComponent(product.id);
+            link.href = '/product?id=' + encodeURIComponent(product.id);
             card.appendChild(link);
           }
           list.appendChild(card);
@@ -163,7 +163,7 @@
           card.appendChild(price);
           const link = document.createElement('a');
           link.textContent = 'View product';
-          link.href = '/product.html?id=' + encodeURIComponent(product.id);
+          link.href = '/product?id=' + encodeURIComponent(product.id);
           card.appendChild(link);
           list.appendChild(card);
         }
@@ -191,7 +191,7 @@
       const item = document.createElement('li');
       const link = document.createElement('a');
       link.textContent = collection.trim();
-      link.href = '/collections.html';
+      link.href = '/collections';
       item.appendChild(link);
       list.appendChild(item);
     }

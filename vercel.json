@@ -46,6 +46,10 @@
           "env": ["PROXY_SECRET"]
         }
       ]
+    },
+    {
+      "src": "^/(about|accessibility|account|checkout|collections|contact|faq|journal|journal-behind-the-collection|journal-language-of-black|journal-new-silhouette|men|order-confirmation|privacy|product|reset-password|returns|shipping|size-guide|terms|track|unsubscribe|wishlist|women)$",
+      "dest": "/$1.html"
     }
   ],
   "headers": [

@@ -17,6 +17,7 @@ import { createCouponsRouter } from './routes/coupons.js';
 import { createContactRouter } from './routes/contact.js';
 import { createSiteStudioPublicRouter } from './routes/site-studio.js';
 import { getDbClient } from './db/connect.js';
+import { cleanPageUrls } from './middleware/clean-urls.js';
 import { publicStaticPaths, securityHeaders } from './middleware/security.js';
 import { notFoundHandler, errorHandler } from './middleware/errors.js';
 import { sessionMiddleware } from './middleware/session.js';
@@ -112,6 +113,9 @@ export function createApp({
   // Unmatched API paths are JSON 404s and must never fall through to the
   // static handler (including crafted `/api/../...` paths).
   app.use('/api', notFoundHandler());
+
+  // Clean page addresses (/about serves about.html), as on Vercel.
+  app.use(cleanPageUrls());
 
   // Serve only the explicit storefront allowlist.
   app.use(publicStaticPaths());
