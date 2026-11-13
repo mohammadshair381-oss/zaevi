@@ -49,7 +49,13 @@
     },
     {
       "src": "^/(about|accessibility|account|checkout|collections|contact|faq|journal|journal-behind-the-collection|journal-language-of-black|journal-new-silhouette|men|order-confirmation|privacy|product|reset-password|returns|shipping|size-guide|terms|track|unsubscribe|wishlist|women)$",
-      "dest": "/$1.html"
+      "dest": "/$1.html",
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://checkout.razorpay.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; img-src 'self' data: https://images.unsplash.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+      }
     }
   ],
   "headers": [

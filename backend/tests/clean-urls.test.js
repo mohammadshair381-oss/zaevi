@@ -37,7 +37,11 @@ test('the storefront has 24 pages with clean addresses, besides the homepage', (
 test('vercel.json maps exactly the storefront pages, with no catch-all', () => {
   const route = cleanRoute();
   assert.ok(route, 'clean-address route present');
-  assert.deepEqual(Object.keys(route).sort(), ['dest', 'src']);
+  assert.deepEqual(Object.keys(route).sort(), ['dest', 'headers', 'src']);
+  // Vercel does not apply the site-wide headers to pages served through this rewrite,
+  // so the route must carry exactly the same security headers itself.
+  const siteWide = Object.fromEntries(JSON.parse(read('vercel.json')).headers[0].headers.map(({ key, value }) => [key, value]));
+  assert.deepEqual(route.headers, siteWide);
   const listed = route.src.match(/^\^\/\(([^)]+)\)\$$/)[1].split('|').sort();
   assert.deepEqual(listed, PAGES);
   const pattern = new RegExp(route.src);
